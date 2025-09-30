@@ -1,1 +1,2 @@
 id,room_id,sender,sender_name,target,type,sdp,candidate,created_at
+1,test-room,user1,User1,,new-peer,,,

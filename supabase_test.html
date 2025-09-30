@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Connection Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Supabase Connection Test</h1>
+    <button id="testButton">Test Supabase Connection</button>
+    <div id="result"></div>
+
+    <script src="config.js"></script>
+    <script>
+        document.getElementById('testButton').addEventListener('click', async () => {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                // Initialize Supabase
+                const supabase = supabase.createClient(
+                    window.SUPABASE_CONFIG.url,
+                    window.SUPABASE_CONFIG.anonKey
+                );
+                
+                resultDiv.innerHTML += '<br>Supabase client initialized successfully';
+                
+                // Test inserting a record
+                const { data, error } = await supabase
+                    .from('signals')
+                    .insert({
+                        room_id: 'test-room',
+                        sender: 'test-user',
+                        sender_name: 'Test User',
+                        type: 'test',
+                        created_at: new Date().toISOString()
+                    });
+                
+                if (error) {
+                    resultDiv.innerHTML += `<br>Error inserting record: ${error.message}`;
+                    console.error('Insert error:', error);
+                } else {
+                    resultDiv.innerHTML += '<br>Record inserted successfully';
+                    console.log('Insert result:', data);
+                }
+                
+                // Test querying records
+                const { data: selectData, error: selectError } = await supabase
+                    .from('signals')
+                    .select('*')
+                    .limit(5);
+                
+                if (selectError) {
+                    resultDiv.innerHTML += `<br>Error querying records: ${selectError.message}`;
+                    console.error('Select error:', selectError);
+                } else {
+                    resultDiv.innerHTML += `<br>Query successful. Found ${selectData.length} records`;
+                    console.log('Select result:', selectData);
+                }
+                
+            } catch (error) {
+                resultDiv.innerHTML += `<br>Exception: ${error.message}`;
+                console.error('Exception:', error);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>P2P Chat - WebRTC</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=1.0">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -20,6 +20,7 @@
             <div class="room-input">
                 <input type="text" id="roomId" placeholder="Enter or create a room ID">
                 <button id="joinRoom">Join Room</button>
+                <button id="resetButton" style="display:none;">Reset Connection</button>
             </div>
             <div class="room-info">
                 <span id="roomStatus">Not connected</span>
@@ -36,7 +37,7 @@
         </div>
     </div>
     
-    <script src="config.js"></script>
-    <script src="app.js"></script>
+    <script src="config.js?v=1.0"></script>
+    <script src="app.js?v=1.0"></script>
 </body>
 </html>

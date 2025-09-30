@@ -35,6 +35,8 @@ class P2PChat {
             window.SUPABASE_CONFIG.anonKey
         );
         
+        console.log('Supabase initialized with URL:', window.SUPABASE_CONFIG.url);
+        
         // Set up event listeners
         this.setupEventListeners();
         
@@ -57,6 +59,12 @@ class P2PChat {
             if (e.key === 'Enter') this.sendMessage();
         });
         this.elements.themeToggle.addEventListener('click', () => this.toggleTheme());
+        
+        // Add reset button event listener
+        const resetButton = document.getElementById('resetButton');
+        if (resetButton) {
+            resetButton.addEventListener('click', () => this.resetConnection());
+        }
     }
     
     async joinRoom() {
@@ -68,8 +76,31 @@ class P2PChat {
         
         this.roomId = roomId;
         this.updateRoomStatus('Connecting...');
+        this.showMessage(`Attempting to join room: ${roomId}`);
         
         try {
+            // Test Supabase connection and table existence
+            const { data: testData, error: testError } = await this.supabase
+                .from('signals')
+                .select('id')
+                .limit(1);
+            
+            if (testError) {
+                console.error('Supabase connection test failed:', testError);
+                if (testError.message.includes('relation "signals" does not exist') || 
+                    testError.message.includes('table "signals" does not exist')) {
+                    this.showMessage('Error: The "signals" table does not exist in your Supabase database. Please create it first.');
+                    this.updateRoomStatus('Table missing');
+                } else {
+                    this.showMessage(`Database error: ${testError.message}`);
+                    this.updateRoomStatus('Database connection failed');
+                }
+                return;
+            }
+            
+            console.log('Supabase connection test successful');
+            this.showMessage('Database connection successful');
+            
             // Create signaling channel
             this.channel = this.supabase
                 .channel(`room-${this.roomId}`)
@@ -81,22 +112,47 @@ class P2PChat {
                         table: 'signals'
                     },
                     (payload) => {
+                        console.log('Received signal:', payload.new);
+                        this.showMessage(`Received signal of type: ${payload.new.type}`);
                         this.handleSignal(payload.new);
                     }
                 )
-                .subscribe((status) => {
+                .subscribe((status, error) => {
+                    console.log('Subscription status:', status, error);
                     if (status === 'SUBSCRIBED') {
                         console.log('Successfully subscribed to room channel');
+                        this.showMessage('Successfully connected to room');
                         this.updateRoomStatus('Connected');
                         this.enableChat();
+                        
+                        // Send a test signal to verify everything works
+                        setTimeout(() => {
+                            this.sendSignal({
+                                type: 'new-peer'
+                            });
+                        }, 1000);
+                    } else if (status === 'CHANNEL_ERROR') {
+                        console.error('Channel error:', error);
+                        this.showMessage(`Connection error: ${error?.message || 'Unknown error'}`);
+                        this.updateRoomStatus('Connection failed');
                     }
                 });
+            
+            // Add a timeout for connection
+            setTimeout(() => {
+                if (this.elements.roomStatus.textContent === 'Connecting...') {
+                    this.showMessage('Connection timed out. Please check your network and Supabase configuration.');
+                    this.updateRoomStatus('Connection timeout');
+                }
+            }, 10000); // 10 second timeout
             
             // When joining a room, we don't automatically create offers
             // Instead, we wait for other peers to send 'new-peer' signals
             // and then we'll create offers for them
+            this.showMessage('Waiting for other peers to join...');
         } catch (error) {
             console.error('Error joining room:', error);
+            this.showMessage(`Error joining room: ${error.message}`);
             this.updateRoomStatus('Connection failed');
         }
     }
@@ -254,6 +310,7 @@ class P2PChat {
     setupDataChannel(dataChannel, peerId = null) {
         dataChannel.onopen = () => {
             console.log(`Data channel opened with ${peerId || 'unknown peer'}`);
+            this.showMessage(`Connected to peer: ${peerId || 'unknown'}`);
             // Update the peer with the data channel if not already set
             if (peerId) {
                 const peer = this.peers.get(peerId);
@@ -269,14 +326,21 @@ class P2PChat {
                 this.displayMessage(message.text, message.sender, message.sender === this.username);
             } catch (error) {
                 console.error('Error parsing message:', error);
+                this.showMessage(`Error parsing message: ${error.message}`);
             }
         };
         
         dataChannel.onclose = () => {
             console.log(`Data channel closed with ${peerId || 'unknown peer'}`);
+            this.showMessage(`Disconnected from peer: ${peerId || 'unknown'}`);
             if (peerId) {
                 this.peers.delete(peerId);
             }
+        };
+        
+        dataChannel.onerror = (error) => {
+            console.error(`Data channel error with ${peerId || 'unknown peer'}:`, error);
+            this.showMessage(`Connection error with peer: ${peerId || 'unknown'}`);
         };
     }
     
@@ -296,10 +360,22 @@ class P2PChat {
             created_at: new Date().toISOString()
         };
         
+        console.log('Sending signal:', signalData);
+        this.showMessage(`Sending signal: ${signal.type}`);
+        
         try {
-            await this.supabase.from('signals').insert(signalData);
+            const { data, error } = await this.supabase.from('signals').insert(signalData);
+            if (error) {
+                console.error('Error sending signal:', error);
+                this.showMessage(`Error sending signal: ${error.message}`);
+            } else {
+                console.log('Signal sent successfully:', data);
+            }
+            return { data, error };
         } catch (error) {
             console.error('Error sending signal:', error);
+            this.showMessage(`Error sending signal: ${error.message}`);
+            return { error };
         }
     }
     
@@ -394,6 +470,12 @@ class P2PChat {
         this.elements.sendButton.disabled = false;
         this.elements.joinRoomBtn.disabled = true;
         this.elements.roomIdInput.disabled = true;
+        
+        // Show reset button
+        const resetButton = document.getElementById('resetButton');
+        if (resetButton) {
+            resetButton.style.display = 'inline-block';
+        }
     }
     
     generateUserId() {
@@ -433,6 +515,39 @@ class P2PChat {
         messageDiv.innerHTML = `<strong>System:</strong> ${text}`;
         this.elements.messagesContainer.appendChild(messageDiv);
         this.elements.messagesContainer.scrollTop = this.elements.messagesContainer.scrollHeight;
+    }
+    
+    resetConnection() {
+        // Close all peer connections
+        for (const [peerId, peer] of this.peers.entries()) {
+            if (peer.connection) {
+                peer.connection.close();
+            }
+        }
+        
+        // Clear peers map
+        this.peers.clear();
+        
+        // Unsubscribe from channel if exists
+        if (this.channel) {
+            this.channel.unsubscribe();
+            this.channel = null;
+        }
+        
+        // Reset UI
+        this.elements.messageInput.disabled = true;
+        this.elements.sendButton.disabled = true;
+        this.elements.joinRoomBtn.disabled = false;
+        this.elements.roomIdInput.disabled = false;
+        this.elements.roomStatus.textContent = 'Not connected';
+        
+        // Hide reset button
+        const resetButton = document.getElementById('resetButton');
+        if (resetButton) {
+            resetButton.style.display = 'none';
+        }
+        
+        this.showMessage('Connection reset. You can now join a room again.');
     }
 }
 

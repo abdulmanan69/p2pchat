@@ -12,6 +12,18 @@ A fully functional peer-to-peer chat application using WebRTC, Supabase, and Git
 - Room-based chat with link sharing
 - GitHub Pages deployment ready
 
+## Files Included
+
+- `index.html` - Main application interface
+- `style.css` - Styling for the application
+- `app.js` - Core application logic
+- `config.js` - Supabase configuration
+- `README.md` - This documentation
+- `SUPABASE_SETUP.md` - Detailed Supabase setup guide
+- `supabase_schema.sql` - SQL schema for Supabase table
+- `supabase_test.html` - Supabase connection testing tool
+- `signals_table.csv` - CSV template for table import
+
 ## Prerequisites
 
 1. A free [Supabase](https://supabase.io/) account
@@ -27,25 +39,11 @@ A fully functional peer-to-peer chat application using WebRTC, Supabase, and Git
 2. Note down your Project URL and anon key from `Settings > API`
 
 #### Create the Signals Table
-1. In your Supabase dashboard, go to Table Editor
-2. Click "New Table" and name it `signals`
-3. Add the following columns:
-   - `id` (auto-incrementing integer, primary key)
-   - `room_id` (text)
-   - `sender` (text)
-   - `sender_name` (text)
-   - `target` (text, nullable)
-   - `type` (text)
-   - `sdp` (text, nullable)
-   - `candidate` (text, nullable)
-   - `created_at` (timestamp, default: now())
+You can either:
+1. Use the `supabase_schema.sql` file and run it in the Supabase SQL editor, or
+2. Follow the manual steps in `SUPABASE_SETUP.md`
 
 #### Configure Row Level Security (RLS)
-1. In the Table Editor, select the `signals` table
-2. Go to the "Policies" tab
-3. Enable Row Level Security
-4. Create the following policies:
-
 **Policy 1: Enable read access for all**
 - Name: `Enable read access for all`
 - Operation: `SELECT`
@@ -75,6 +73,8 @@ These policies allow all users to read and insert signaling data, which is neces
 4. Test sending messages between browsers
 
 Note: For testing with multiple users on the same machine, use different browsers or private/incognito windows to ensure proper WebRTC functionality.
+
+You can also use `supabase_test.html` to verify your Supabase connection is working properly.
 
 ## Deployment to GitHub Pages
 
@@ -124,20 +124,53 @@ If you have GitHub Desktop installed:
 
 ## Troubleshooting
 
-1. **Connection Issues**: 
+### Common Issues and Solutions
+
+1. **No data appears in Supabase table**:
+   - Check browser console for JavaScript errors
+   - Verify Supabase credentials in `config.js` are correct
+   - Confirm the `signals` table exists with the correct schema
+   - Ensure RLS policies are properly configured
+   - Check Supabase dashboard for any error messages
+
+2. **Connection Issues**: 
    - Ensure you're using a supported browser (Chrome, Firefox, Edge)
    - Check that both users are using the exact same room ID
    - Make sure both users joined the room (the first user must be in the room when the second user joins)
+   - Some networks (especially corporate networks) may block WebRTC connections
 
-2. **Messages Not Sending**:
+3. **Messages Not Sending**:
    - Check browser console for errors
    - Ensure WebRTC is not blocked by browser extensions or firewall
-   - Verify Supabase credentials are correct
+   - Verify that the WebRTC connection is established (check connection status)
+   - Confirm that data channels are opening properly
 
-3. **Supabase Errors**:
+4. **Supabase Errors**:
    - Double-check your Project URL and anon key
    - Verify RLS policies are correctly configured
    - Ensure the `signals` table has the correct schema
+   - Check that you're using the anon key and not the service key
+
+### Debugging Steps
+
+1. Open the browser's developer tools (F12)
+2. Check the Console tab for any error messages
+3. Check the Network tab to see if requests to Supabase are successful
+4. Verify that the Supabase client is being initialized correctly
+5. Check that the Realtime subscription is working
+6. Look for any WebRTC-related errors
+
+### Testing the Supabase Connection
+
+1. Make sure you can access your Supabase project URL in the browser
+2. Verify that your anon key is correct by checking it in the Supabase dashboard
+3. Try manually inserting a record into the signals table through the Supabase SQL editor:
+   ```sql
+   INSERT INTO signals (room_id, sender, sender_name, type) 
+   VALUES ('test-room', 'test-user', 'Test User', 'test');
+   ```
+
+You can also use the `supabase_test.html` file included in the project to test your Supabase connection.
 
 ## Browser Support
 
