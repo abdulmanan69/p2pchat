@@ -74,7 +74,7 @@
 
     <script src="config.js"></script>
     <script>
-        let supabase = null;
+        let supabaseClient = null;
         let subscription = null;
         let logDiv = document.getElementById('signalsLog');
         
@@ -103,13 +103,14 @@
                     throw new Error('Supabase configuration not found. Check config.js');
                 }
                 
-                supabase = supabase.createClient(
+                // Fix: Use the Supabase client directly from the CDN
+                supabaseClient = supabase.createClient(
                     window.SUPABASE_CONFIG.url,
                     window.SUPABASE_CONFIG.anonKey
                 );
                 
                 // Test the connection
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('signals')
                     .select('id')
                     .limit(1);
@@ -137,7 +138,7 @@
                 subscription = null;
             }
             
-            supabase = null;
+            supabaseClient = null;
             connectionResult.innerHTML = 'Disconnected from Supabase';
             connectionResult.className = 'result';
             connectButton.disabled = false;
@@ -149,7 +150,7 @@
         
         // Start monitoring signals
         function startMonitoring() {
-            if (!supabase) {
+            if (!supabaseClient) {
                 monitorResult.innerHTML = '❌ Please connect to Supabase first';
                 monitorResult.className = 'result error';
                 return;
@@ -159,7 +160,7 @@
             
             try {
                 // Subscribe to signals table changes
-                subscription = supabase
+                subscription = supabaseClient
                     .channel('signals-monitor')
                     .on(
                         'postgres_changes',
@@ -209,14 +210,14 @@
         
         // Refresh data
         async function refreshData() {
-            if (!supabase) {
+            if (!supabaseClient) {
                 monitorResult.innerHTML = '❌ Please connect to Supabase first';
                 monitorResult.className = 'result error';
                 return;
             }
             
             try {
-                let query = supabase
+                let query = supabaseClient
                     .from('signals')
                     .select('*')
                     .order('created_at', { ascending: false })

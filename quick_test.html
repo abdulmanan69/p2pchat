@@ -136,6 +136,7 @@
                 updateStep('step2', 'current');
                 log('Step 2: Testing Supabase connection...', 'info');
                 
+                // Fix: Use the Supabase client directly from the CDN
                 supabase = supabase.createClient(
                     window.SUPABASE_CONFIG.url,
                     window.SUPABASE_CONFIG.anonKey
@@ -232,12 +233,13 @@
                     throw new Error('Supabase configuration is missing');
                 }
                 
-                const supabase = supabase.createClient(
+                // Fix: Use the Supabase client directly from the CDN
+                const testSupabaseClient = supabase.createClient(
                     window.SUPABASE_CONFIG.url,
                     window.SUPABASE_CONFIG.anonKey
                 );
                 
-                const { data, error } = await supabase
+                const { data, error } = await testSupabaseClient
                     .from('signals')
                     .select('id')
                     .limit(1);
