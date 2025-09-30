@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TURN Server Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        button { padding: 10px 15px; margin: 5px; background: #4a6fa5; color: white; border: none; cursor: pointer; }
+        button:hover { background: #3a5a80; }
+        .result { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        textarea { width: 100%; height: 150px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>TURN Server Test</h1>
+    
+    <div class="test-section">
+        <h2>Cloudflare TURN Credentials</h2>
+        <button id="fetchTurn">Fetch TURN Credentials</button>
+        <div id="turnResult" class="result"></div>
+        <textarea id="turnDetails" placeholder="TURN server details will appear here"></textarea>
+    </div>
+    
+    <div class="test-section">
+        <h2>TURN Connectivity Test</h2>
+        <button id="testTurn">Test TURN Connectivity</button>
+        <div id="connectivityResult" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>ICE Candidate Analysis</h2>
+        <button id="analyzeIce">Analyze ICE Candidates</button>
+        <div id="iceResult" class="result"></div>
+        <textarea id="iceDetails" placeholder="ICE candidate details will appear here"></textarea>
+    </div>
+
+    <script src="turn_helper.js"></script>
+    <script>
+        document.getElementById('fetchTurn').addEventListener('click', fetchTurnCredentials);
+        document.getElementById('testTurn').addEventListener('click', testTurnConnectivity);
+        document.getElementById('analyzeIce').addEventListener('click', analyzeIceCandidates);
+        
+        async function fetchTurnCredentials() {
+            const result = document.getElementById('turnResult');
+            const details = document.getElementById('turnDetails');
+            
+            result.innerHTML = 'Fetching TURN credentials...';
+            result.className = 'result';
+            details.value = '';
+            
+            try {
+                const iceServers = await TurnHelper.getTurnCredentials();
+                
+                result.innerHTML = '✅ TURN credentials fetched successfully';
+                result.className = 'result success';
+                
+                details.value = JSON.stringify(iceServers, null, 2);
+            } catch (error) {
+                result.innerHTML = `❌ Error fetching TURN credentials: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testTurnConnectivity() {
+            const result = document.getElementById('connectivityResult');
+            result.innerHTML = 'Testing TURN connectivity...';
+            result.className = 'result';
+            
+            try {
+                const pc = await TurnHelper.createPeerConnectionWithTurn();
+                
+                // Add a dummy media stream to trigger ICE candidate generation
+                const dummyStream = new MediaStream();
+                pc.addStream(dummyStream);
+                
+                // Create offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                result.innerHTML = '✅ TURN server connection test completed';
+                result.className = 'result success';
+                
+                // Check connection state after a delay
+                setTimeout(() => {
+                    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                        result.innerHTML += '<br>✅ ICE connection established';
+                    } else if (pc.iceConnectionState === 'checking') {
+                        result.innerHTML += '<br>⚠️ ICE still checking (may take some time)';
+                        result.className = 'result warning';
+                    } else {
+                        result.innerHTML += `<br>ℹ️ ICE state: ${pc.iceConnectionState}`;
+                    }
+                }, 3000);
+                
+                pc.close();
+            } catch (error) {
+                result.innerHTML = `❌ Error testing TURN connectivity: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function analyzeIceCandidates() {
+            const result = document.getElementById('iceResult');
+            const details = document.getElementById('iceDetails');
+            
+            result.innerHTML = 'Analyzing ICE candidates...';
+            result.className = 'result';
+            details.value = '';
+            
+            try {
+                const candidates = [];
+                const candidateTypes = {};
+                
+                const pc = await TurnHelper.createPeerConnectionWithTurn();
+                
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        candidates.push(event.candidate);
+                        
+                        // Categorize candidate types
+                        const type = event.candidate.type;
+                        candidateTypes[type] = (candidateTypes[type] || 0) + 1;
+                        
+                        result.innerHTML = `Generated ${candidates.length} ICE candidates...`;
+                    } else if (candidates.length > 0) {
+                        result.innerHTML = `✅ Successfully generated ${candidates.length} ICE candidates<br>`;
+                        
+                        // Show candidate type breakdown
+                        for (const [type, count] of Object.entries(candidateTypes)) {
+                            result.innerHTML += `${type}: ${count}<br>`;
+                        }
+                        
+                        result.className = 'result success';
+                        details.value = candidates.map(c => c.candidate).join('\n');
+                    }
+                };
+                
+                // Add a dummy media stream to trigger ICE candidate generation
+                const dummyStream = new MediaStream();
+                pc.addStream(dummyStream);
+                
+                // Create offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                // Timeout after 5 seconds
+                setTimeout(() => {
+                    if (candidates.length === 0) {
+                        result.innerHTML = '⚠️ No ICE candidates generated within 5 seconds. This might indicate network issues.';
+                        result.className = 'result warning';
+                    }
+                    pc.close();
+                }, 5000);
+                
+            } catch (error) {
+                result.innerHTML = `❌ Error analyzing ICE candidates: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+    </script>
+</body>
+</html>

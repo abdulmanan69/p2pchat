@@ -11,6 +11,7 @@ A fully functional peer-to-peer chat application using WebRTC, Supabase, and Git
 - Random username generation
 - Room-based chat with link sharing
 - GitHub Pages deployment ready
+- Automatic TURN server integration for better connectivity
 
 ## Files Included
 
@@ -18,6 +19,7 @@ A fully functional peer-to-peer chat application using WebRTC, Supabase, and Git
 - `style.css` - Styling for the application
 - `app.js` - Core application logic
 - `config.js` - Supabase configuration
+- `turn_helper.js` - TURN server helper for Cloudflare integration
 - `README.md` - This documentation
 - `SUPABASE_SETUP.md` - Detailed Supabase setup guide
 - `supabase_schema.sql` - SQL schema for Supabase table
@@ -25,6 +27,7 @@ A fully functional peer-to-peer chat application using WebRTC, Supabase, and Git
 - `supabase_test.html` - Supabase connection testing tool
 - `signals_table.csv` - CSV template for table import
 - `webrtc_test.html` - WebRTC connectivity testing tool
+- `turn_test.html` - TURN server testing tool
 - `WEBRTC_TROUBLESHOOTING.md` - Detailed WebRTC troubleshooting guide
 
 ## Prerequisites
@@ -120,12 +123,15 @@ If you have GitHub Desktop installed:
 
 4. **Multi-user Support**: The app supports multiple users in the same room by establishing a full mesh network where each user connects directly to every other user.
 
+5. **TURN Server Integration**: The application automatically fetches TURN server credentials from Cloudflare's free service to improve connectivity through restrictive networks.
+
 ## Security Notes
 
 - The application uses Supabase's anon key which is safe to expose in client-side code
 - Row Level Security ensures users can only access data from their room
 - No sensitive information is stored in the database
 - All communication after connection establishment is peer-to-peer
+- TURN credentials are fetched securely from Cloudflare
 
 ## Troubleshooting
 
@@ -195,6 +201,13 @@ Use the `webrtc_test.html` file to test:
 3. ICE candidate generation
 4. Data channel functionality
 
+### Testing TURN Server Connectivity
+
+Use the `turn_test.html` file to test:
+1. TURN server credential fetching
+2. TURN server connectivity
+3. ICE candidate analysis with TURN servers
+
 See [WEBRTC_TROUBLESHOOTING.md](file:///C:/Users/PMLS/Desktop/chat/WEBRTC_TROUBLESHOOTING.md) for detailed WebRTC troubleshooting steps.
 
 ## Browser Support
@@ -213,6 +226,7 @@ Note: For the best experience, use the latest versions of these browsers. Some o
 2. **Mobile Networks**: Some mobile carriers restrict P2P connections
 3. **Scalability**: Full mesh network becomes inefficient with many users (>5)
 4. **Connection Persistence**: Users must remain connected to maintain the chat session
+5. **TURN Server Availability**: Cloudflare's TURN service may have rate limits or availability issues
 
 ## Customization
 
