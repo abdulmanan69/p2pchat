@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Quick P2P Chat Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        button { padding: 10px 15px; margin: 5px; background: #4a6fa5; color: white; border: none; cursor: pointer; border-radius: 3px; }
+        button:hover { background: #3a5a80; }
+        button:disabled { background: #cccccc; cursor: not-allowed; }
+        .result { margin: 10px 0; padding: 10px; border-radius: 3px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        .log { height: 200px; overflow-y: auto; font-family: monospace; background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; margin-top: 10px; border-radius: 3px; }
+        .step { margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 3px; }
+        .step.completed { background: #d4edda; }
+        .step.failed { background: #f8d7da; }
+        .step.current { background: #d1ecf1; }
+    </style>
+</head>
+<body>
+    <h1>Quick P2P Chat Test</h1>
+    <p>This tool will quickly test all components of your P2P chat application.</p>
+    
+    <div class="test-section">
+        <h2>Automated Test</h2>
+        <button id="runTest">Run Complete Test</button>
+        <button id="stopTest" disabled>Stop Test</button>
+        <div id="testProgress"></div>
+        <div id="testResult" class="result"></div>
+        <div id="testLog" class="log"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Manual Test Steps</h2>
+        <div id="manualSteps">
+            <div class="step" id="step1">
+                <h3>Step 1: Check Configuration</h3>
+                <p>Verify Supabase configuration in config.js</p>
+                <button onclick="checkConfig()">Check Config</button>
+            </div>
+            <div class="step" id="step2">
+                <h3>Step 2: Test Supabase Connection</h3>
+                <p>Test connection to Supabase database</p>
+                <button onclick="testSupabase()">Test Connection</button>
+            </div>
+            <div class="step" id="step3">
+                <h3>Step 3: Test TURN Servers</h3>
+                <p>Verify TURN server connectivity</p>
+                <button onclick="testTurn()">Test TURN</button>
+            </div>
+            <div class="step" id="step4">
+                <h3>Step 4: Test WebRTC Support</h3>
+                <p>Check browser WebRTC capabilities</p>
+                <button onclick="testWebrtc()">Test WebRTC</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="turn_helper.js"></script>
+    <script>
+        let testRunning = false;
+        let supabase = null;
+        
+        // DOM Elements
+        const runTestButton = document.getElementById('runTest');
+        const stopTestButton = document.getElementById('stopTest');
+        const testProgress = document.getElementById('testProgress');
+        const testResult = document.getElementById('testResult');
+        const testLog = document.getElementById('testLog');
+        
+        // Event Listeners
+        runTestButton.addEventListener('click', runCompleteTest);
+        stopTestButton.addEventListener('click', stopTest);
+        
+        // Log function
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            
+            switch (type) {
+                case 'success':
+                    logEntry.style.color = '#155724';
+                    break;
+                case 'error':
+                    logEntry.style.color = '#721c24';
+                    break;
+                case 'warning':
+                    logEntry.style.color = '#856404';
+                    break;
+                default:
+                    logEntry.style.color = '#000000';
+            }
+            
+            testLog.appendChild(logEntry);
+            testLog.scrollTop = testLog.scrollHeight;
+        }
+        
+        // Update step status
+        function updateStep(stepId, status) {
+            const step = document.getElementById(stepId);
+            step.className = `step ${status}`;
+        }
+        
+        // Run complete test
+        async function runCompleteTest() {
+            if (testRunning) return;
+            
+            testRunning = true;
+            runTestButton.disabled = true;
+            stopTestButton.disabled = false;
+            testResult.innerHTML = '';
+            testLog.innerHTML = '';
+            testProgress.innerHTML = 'Test in progress...';
+            
+            log('Starting complete test', 'info');
+            
+            try {
+                // Step 1: Check configuration
+                updateStep('step1', 'current');
+                log('Step 1: Checking configuration...', 'info');
+                
+                if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.anonKey) {
+                    throw new Error('Supabase configuration is missing or invalid');
+                }
+                
+                log('✅ Configuration check passed', 'success');
+                updateStep('step1', 'completed');
+                
+                // Step 2: Test Supabase connection
+                updateStep('step2', 'current');
+                log('Step 2: Testing Supabase connection...', 'info');
+                
+                supabase = supabase.createClient(
+                    window.SUPABASE_CONFIG.url,
+                    window.SUPABASE_CONFIG.anonKey
+                );
+                
+                const { data, error } = await supabase
+                    .from('signals')
+                    .select('id')
+                    .limit(1);
+                
+                if (error) throw error;
+                
+                log('✅ Supabase connection successful', 'success');
+                updateStep('step2', 'completed');
+                
+                // Step 3: Test TURN servers
+                updateStep('step3', 'current');
+                log('Step 3: Testing TURN servers...', 'info');
+                
+                const iceServers = await TurnHelper.getTurnCredentials();
+                log(`✅ TURN server configuration: ${iceServers.length} servers configured`, 'success');
+                updateStep('step3', 'completed');
+                
+                // Step 4: Test WebRTC support
+                updateStep('step4', 'current');
+                log('Step 4: Testing WebRTC support...', 'info');
+                
+                if (typeof RTCPeerConnection === 'undefined') {
+                    throw new Error('WebRTC is not supported in this browser');
+                }
+                
+                // Test creating a peer connection
+                const pc = new RTCPeerConnection({ iceServers: iceServers.slice(0, 1) });
+                pc.createDataChannel('test');
+                pc.close();
+                
+                log('✅ WebRTC support verified', 'success');
+                updateStep('step4', 'completed');
+                
+                // Test completed
+                testResult.innerHTML = '✅ All tests passed! Your P2P chat application should work correctly.';
+                testResult.className = 'result success';
+                testProgress.innerHTML = 'Test completed successfully';
+                log('🎉 All tests completed successfully!', 'success');
+                
+            } catch (error) {
+                testResult.innerHTML = `❌ Test failed: ${error.message}`;
+                testResult.className = 'result error';
+                testProgress.innerHTML = 'Test failed';
+                log(`❌ Test failed: ${error.message}`, 'error');
+                
+                // Mark current step as failed
+                for (let i = 1; i <= 4; i++) {
+                    const step = document.getElementById(`step${i}`);
+                    if (step.className.includes('current')) {
+                        updateStep(`step${i}`, 'failed');
+                        break;
+                    }
+                }
+            } finally {
+                testRunning = false;
+                runTestButton.disabled = false;
+                stopTestButton.disabled = true;
+            }
+        }
+        
+        // Stop test
+        function stopTest() {
+            testRunning = false;
+            runTestButton.disabled = false;
+            stopTestButton.disabled = true;
+            testProgress.innerHTML = 'Test stopped by user';
+            log('Test stopped by user', 'warning');
+        }
+        
+        // Manual test functions
+        async function checkConfig() {
+            try {
+                if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.anonKey) {
+                    throw new Error('Supabase configuration is missing or invalid');
+                }
+                
+                alert('✅ Configuration is valid\nURL: ' + window.SUPABASE_CONFIG.url);
+                updateStep('step1', 'completed');
+            } catch (error) {
+                alert('❌ Configuration error: ' + error.message);
+                updateStep('step1', 'failed');
+            }
+        }
+        
+        async function testSupabase() {
+            try {
+                if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.anonKey) {
+                    throw new Error('Supabase configuration is missing');
+                }
+                
+                const supabase = supabase.createClient(
+                    window.SUPABASE_CONFIG.url,
+                    window.SUPABASE_CONFIG.anonKey
+                );
+                
+                const { data, error } = await supabase
+                    .from('signals')
+                    .select('id')
+                    .limit(1);
+                
+                if (error) throw error;
+                
+                alert('✅ Supabase connection successful');
+                updateStep('step2', 'completed');
+            } catch (error) {
+                alert('❌ Supabase connection failed: ' + error.message);
+                updateStep('step2', 'failed');
+            }
+        }
+        
+        async function testTurn() {
+            try {
+                const iceServers = await TurnHelper.getTurnCredentials();
+                alert(`✅ TURN servers configured\n${iceServers.length} servers found`);
+                updateStep('step3', 'completed');
+            } catch (error) {
+                alert('❌ TURN server test failed: ' + error.message);
+                updateStep('step3', 'failed');
+            }
+        }
+        
+        function testWebrtc() {
+            try {
+                if (typeof RTCPeerConnection === 'undefined') {
+                    throw new Error('WebRTC is not supported in this browser');
+                }
+                
+                alert('✅ WebRTC is supported in this browser');
+                updateStep('step4', 'completed');
+            } catch (error) {
+                alert('❌ WebRTC test failed: ' + error.message);
+                updateStep('step4', 'failed');
+            }
+        }
+        
+        // Initialize
+        log('Quick P2P Chat Test initialized. Click "Run Complete Test" to start.');
+    </script>
+</body>
+</html>

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Signals Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .monitor-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        button { padding: 10px 15px; margin: 5px; background: #4a6fa5; color: white; border: none; cursor: pointer; }
+        button:hover { background: #3a5a80; }
+        .result { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .log { height: 300px; overflow-y: auto; font-family: monospace; background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; margin-top: 10px; }
+        .signal-new-peer { background-color: #e7f3ff; }
+        .signal-offer { background-color: #fff3e0; }
+        .signal-answer { background-color: #e8f5e9; }
+        .signal-ice { background-color: #f3e5f5; }
+    </style>
+</head>
+<body>
+    <h1>Supabase Signals Monitor</h1>
+    <p>Monitor real-time signaling activity in your P2P chat application</p>
+    
+    <div class="monitor-section">
+        <h2>Connection Status</h2>
+        <button id="connectButton">Connect to Supabase</button>
+        <button id="disconnectButton" disabled>Disconnect</button>
+        <div id="connectionResult" class="result"></div>
+    </div>
+    
+    <div class="monitor-section">
+        <h2>Signals Monitoring</h2>
+        <div>
+            <label for="roomFilter">Room ID Filter (optional):</label>
+            <input type="text" id="roomFilter" placeholder="Enter room ID to filter">
+            <button id="startMonitor">Start Monitoring</button>
+            <button id="stopMonitor" disabled>Stop Monitoring</button>
+            <button id="refreshData">Refresh Data</button>
+        </div>
+        <div id="monitorResult" class="result"></div>
+        <div id="signalsLog" class="log"></div>
+    </div>
+    
+    <div class="monitor-section">
+        <h2>Recent Signals</h2>
+        <div id="signalsTable">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Room ID</th>
+                        <th>Sender</th>
+                        <th>Sender Name</th>
+                        <th>Target</th>
+                        <th>Type</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody id="signalsTableBody">
+                    <tr>
+                        <td colspan="7">No data yet. Start monitoring to see signals.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        let supabase = null;
+        let subscription = null;
+        let logDiv = document.getElementById('signalsLog');
+        
+        // DOM Elements
+        const connectButton = document.getElementById('connectButton');
+        const disconnectButton = document.getElementById('disconnectButton');
+        const connectionResult = document.getElementById('connectionResult');
+        const startMonitorButton = document.getElementById('startMonitor');
+        const stopMonitorButton = document.getElementById('stopMonitor');
+        const refreshDataButton = document.getElementById('refreshData');
+        const monitorResult = document.getElementById('monitorResult');
+        const roomFilter = document.getElementById('roomFilter');
+        const signalsTableBody = document.getElementById('signalsTableBody');
+        
+        // Event Listeners
+        connectButton.addEventListener('click', connectToSupabase);
+        disconnectButton.addEventListener('click', disconnectFromSupabase);
+        startMonitorButton.addEventListener('click', startMonitoring);
+        stopMonitorButton.addEventListener('click', stopMonitoring);
+        refreshDataButton.addEventListener('click', refreshData);
+        
+        // Connect to Supabase
+        async function connectToSupabase() {
+            try {
+                if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.anonKey) {
+                    throw new Error('Supabase configuration not found. Check config.js');
+                }
+                
+                supabase = supabase.createClient(
+                    window.SUPABASE_CONFIG.url,
+                    window.SUPABASE_CONFIG.anonKey
+                );
+                
+                // Test the connection
+                const { data, error } = await supabase
+                    .from('signals')
+                    .select('id')
+                    .limit(1);
+                
+                if (error) throw error;
+                
+                connectionResult.innerHTML = '✅ Connected to Supabase successfully';
+                connectionResult.className = 'result success';
+                connectButton.disabled = true;
+                disconnectButton.disabled = false;
+                
+                logMessage('Connected to Supabase');
+                
+            } catch (error) {
+                connectionResult.innerHTML = `❌ Connection failed: ${error.message}`;
+                connectionResult.className = 'result error';
+                logMessage(`Connection error: ${error.message}`);
+            }
+        }
+        
+        // Disconnect from Supabase
+        function disconnectFromSupabase() {
+            if (subscription) {
+                subscription.unsubscribe();
+                subscription = null;
+            }
+            
+            supabase = null;
+            connectionResult.innerHTML = 'Disconnected from Supabase';
+            connectionResult.className = 'result';
+            connectButton.disabled = false;
+            disconnectButton.disabled = true;
+            stopMonitorButton.click(); // Stop monitoring if active
+            
+            logMessage('Disconnected from Supabase');
+        }
+        
+        // Start monitoring signals
+        function startMonitoring() {
+            if (!supabase) {
+                monitorResult.innerHTML = '❌ Please connect to Supabase first';
+                monitorResult.className = 'result error';
+                return;
+            }
+            
+            const roomId = roomFilter.value.trim();
+            
+            try {
+                // Subscribe to signals table changes
+                subscription = supabase
+                    .channel('signals-monitor')
+                    .on(
+                        'postgres_changes',
+                        {
+                            event: 'INSERT',
+                            schema: 'public',
+                            table: 'signals'
+                        },
+                        (payload) => {
+                            handleNewSignal(payload.new);
+                        }
+                    )
+                    .subscribe((status) => {
+                        if (status === 'SUBSCRIBED') {
+                            monitorResult.innerHTML = `✅ Monitoring started${roomId ? ` for room: ${roomId}` : ''}`;
+                            monitorResult.className = 'result success';
+                            startMonitorButton.disabled = true;
+                            stopMonitorButton.disabled = false;
+                            logMessage(`Started monitoring signals${roomId ? ` for room: ${roomId}` : ''}`);
+                        }
+                    });
+                
+                // Load initial data
+                refreshData();
+                
+            } catch (error) {
+                monitorResult.innerHTML = `❌ Monitoring failed: ${error.message}`;
+                monitorResult.className = 'result error';
+                logMessage(`Monitoring error: ${error.message}`);
+            }
+        }
+        
+        // Stop monitoring signals
+        function stopMonitoring() {
+            if (subscription) {
+                subscription.unsubscribe();
+                subscription = null;
+            }
+            
+            monitorResult.innerHTML = 'Monitoring stopped';
+            monitorResult.className = 'result';
+            startMonitorButton.disabled = false;
+            stopMonitorButton.disabled = true;
+            
+            logMessage('Stopped monitoring signals');
+        }
+        
+        // Refresh data
+        async function refreshData() {
+            if (!supabase) {
+                monitorResult.innerHTML = '❌ Please connect to Supabase first';
+                monitorResult.className = 'result error';
+                return;
+            }
+            
+            try {
+                let query = supabase
+                    .from('signals')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(50);
+                
+                const roomId = roomFilter.value.trim();
+                if (roomId) {
+                    query = query.eq('room_id', roomId);
+                }
+                
+                const { data, error } = await query;
+                
+                if (error) throw error;
+                
+                updateSignalsTable(data);
+                logMessage(`Refreshed data: ${data.length} signals loaded`);
+                
+            } catch (error) {
+                monitorResult.innerHTML = `❌ Refresh failed: ${error.message}`;
+                monitorResult.className = 'result error';
+                logMessage(`Refresh error: ${error.message}`);
+            }
+        }
+        
+        // Handle new signal
+        function handleNewSignal(signal) {
+            logSignal(signal);
+            refreshData(); // Refresh the table to include the new signal
+        }
+        
+        // Log signal to the log div
+        function logSignal(signal) {
+            const timestamp = new Date(signal.created_at).toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${signal.type.toUpperCase()} from ${signal.sender_name || signal.sender}${signal.target ? ` to ${signal.target}` : ''} in room ${signal.room_id}`;
+            
+            // Add to log with color coding
+            const logLine = document.createElement('div');
+            logLine.textContent = logEntry;
+            
+            // Add class based on signal type
+            switch (signal.type) {
+                case 'new-peer':
+                    logLine.className = 'signal-new-peer';
+                    break;
+                case 'offer':
+                    logLine.className = 'signal-offer';
+                    break;
+                case 'answer':
+                    logLine.className = 'signal-answer';
+                    break;
+                case 'ice-candidate':
+                    logLine.className = 'signal-ice';
+                    break;
+            }
+            
+            logDiv.appendChild(logLine);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        // Log general message
+        function logMessage(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}`;
+            
+            const logLine = document.createElement('div');
+            logLine.textContent = logEntry;
+            logDiv.appendChild(logLine);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        // Update signals table
+        function updateSignalsTable(signals) {
+            if (signals.length === 0) {
+                signalsTableBody.innerHTML = '<tr><td colspan="7">No signals found</td></tr>';
+                return;
+            }
+            
+            signalsTableBody.innerHTML = '';
+            
+            signals.forEach(signal => {
+                const row = document.createElement('tr');
+                
+                // Add class based on signal type
+                switch (signal.type) {
+                    case 'new-peer':
+                        row.className = 'signal-new-peer';
+                        break;
+                    case 'offer':
+                        row.className = 'signal-offer';
+                        break;
+                    case 'answer':
+                        row.className = 'signal-answer';
+                        break;
+                    case 'ice-candidate':
+                        row.className = 'signal-ice';
+                        break;
+                }
+                
+                row.innerHTML = `
+                    <td>${signal.id}</td>
+                    <td>${signal.room_id}</td>
+                    <td>${signal.sender}</td>
+                    <td>${signal.sender_name || 'N/A'}</td>
+                    <td>${signal.target || 'N/A'}</td>
+                    <td>${signal.type}</td>
+                    <td>${new Date(signal.created_at).toLocaleString()}</td>
+                `;
+                
+                signalsTableBody.appendChild(row);
+            });
+        }
+        
+        // Initialize
+        logMessage('Supabase Signals Monitor initialized');
+    </script>
+</body>
+</html>
