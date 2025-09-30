@@ -176,9 +176,16 @@ class P2PChat {
             
             console.log('Created RTCPeerConnection for peer:', targetPeerId);
             
-            // Create data channel
-            const dataChannel = peerConnection.createDataChannel('chat');
-            this.setupDataChannel(dataChannel, targetPeerId);
+            // Create data channel with error handling
+            let dataChannel;
+            try {
+                dataChannel = peerConnection.createDataChannel('chat');
+                this.setupDataChannel(dataChannel, targetPeerId);
+            } catch (dcError) {
+                console.error('Error creating data channel:', dcError);
+                this.showMessage(`Error creating data channel: ${dcError.message}`);
+                return;
+            }
             
             // Store connection
             this.peers.set(targetPeerId, { connection: peerConnection, dataChannel: dataChannel });
@@ -186,7 +193,7 @@ class P2PChat {
             // Handle ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    console.log('Generated ICE candidate for peer:', targetPeerId);
+                    console.log('Generated ICE candidate for peer:', targetPeerId, event.candidate.type);
                     this.sendSignal({
                         type: 'ice-candidate',
                         candidate: event.candidate,
@@ -200,7 +207,7 @@ class P2PChat {
                 console.log('Connection state changed for peer:', targetPeerId, peerConnection.connectionState);
                 this.showMessage(`Connection state for ${targetPeerId}: ${peerConnection.connectionState}`);
                 
-                // If connection fails, try with TURN server
+                // If connection fails
                 if (peerConnection.connectionState === 'failed') {
                     this.showMessage(`Connection failed with peer ${targetPeerId}.`);
                 }
@@ -209,6 +216,14 @@ class P2PChat {
             peerConnection.oniceconnectionstatechange = () => {
                 console.log('ICE connection state changed for peer:', targetPeerId, peerConnection.iceConnectionState);
                 this.showMessage(`ICE state for ${targetPeerId}: ${peerConnection.iceConnectionState}`);
+            };
+            
+            // Handle ICE gathering state
+            peerConnection.onicegatheringstatechange = () => {
+                console.log('ICE gathering state for peer:', targetPeerId, peerConnection.iceGatheringState);
+                if (peerConnection.iceGatheringState === 'complete') {
+                    this.showMessage(`ICE gathering complete for peer ${targetPeerId}`);
+                }
             };
             
             // Create offer
@@ -662,25 +677,51 @@ class P2PChat {
     // Function to get ICE servers including TURN if available
     async getIceServers() {
         try {
+            this.showMessage('Fetching TURN server credentials...');
+            
             // Try to fetch TURN credentials from Cloudflare
-            const response = await fetch('https://speed.cloudflare.com/turn-creds', { mode: 'cors' });
+            const response = await fetch('https://speed.cloudflare.com/turn-creds', { 
+                mode: 'cors',
+                credentials: 'omit',
+                timeout: 5000 // 5 second timeout
+            });
+            
             if (response.ok) {
                 const turnData = await response.json();
-                this.showMessage('TURN server credentials obtained');
+                this.showMessage('TURN server credentials obtained successfully');
                 
-                return [
+                const iceServers = [
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun.cloudflare.com:3478' },
-                    {
-                        urls: turnData.urls,
-                        username: turnData.username,
-                        credential: turnData.credential
-                    }
+                    { urls: 'stun:stun.cloudflare.com:3478' }
                 ];
+                
+                // Add TURN servers
+                if (turnData.urls && turnData.username && turnData.credential) {
+                    this.showMessage('Adding TURN servers to ICE configuration');
+                    
+                    if (Array.isArray(turnData.urls)) {
+                        turnData.urls.forEach(url => {
+                            iceServers.push({
+                                urls: url,
+                                username: turnData.username,
+                                credential: turnData.credential
+                            });
+                        });
+                    } else {
+                        iceServers.push({
+                            urls: turnData.urls,
+                            username: turnData.username,
+                            credential: turnData.credential
+                        });
+                    }
+                }
+                
+                console.log('ICE servers configured:', iceServers);
+                return iceServers;
             } else {
                 // Fallback to STUN only
-                this.showMessage('Using STUN servers only');
+                this.showMessage('Using STUN servers only (TURN service unavailable)');
                 return [
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun1.l.google.com:19302' },

@@ -39,6 +39,9 @@ class TurnHelper {
                         credential: data.credential
                     });
                 }
+                console.log('TURN servers added:', data.urls);
+            } else {
+                console.log('No TURN servers available in response');
             }
             
             console.log('ICE servers configured:', iceServers);
@@ -57,6 +60,70 @@ class TurnHelper {
     static async createPeerConnectionWithTurn() {
         const iceServers = await this.getTurnCredentials();
         return new RTCPeerConnection({ iceServers });
+    }
+    
+    // Method to test TURN connectivity with more detailed feedback
+    static async testTurnConnectivity() {
+        try {
+            console.log('Testing TURN connectivity...');
+            const iceServers = await this.getTurnCredentials();
+            
+            const results = {
+                iceServers: iceServers,
+                candidates: [],
+                candidateTypes: {},
+                states: [],
+                error: null
+            };
+            
+            const pc = new RTCPeerConnection({ iceServers });
+            
+            // Track state changes
+            pc.oniceconnectionstatechange = () => {
+                results.states.push({
+                    time: new Date().toISOString(),
+                    state: pc.iceConnectionState
+                });
+                console.log('ICE Connection State:', pc.iceConnectionState);
+            };
+            
+            pc.onconnectionstatechange = () => {
+                console.log('Connection State:', pc.connectionState);
+            };
+            
+            // Collect ICE candidates
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    results.candidates.push(event.candidate);
+                    const type = event.candidate.type;
+                    results.candidateTypes[type] = (results.candidateTypes[type] || 0) + 1;
+                    console.log('ICE Candidate:', event.candidate.type, event.candidate.address);
+                }
+            };
+            
+            // Create a dummy data channel to trigger ICE
+            const dataChannel = pc.createDataChannel('test');
+            
+            // Create offer
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            
+            // Wait for candidates to gather
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            
+            pc.close();
+            
+            return results;
+        } catch (error) {
+            console.error('TURN connectivity test failed:', error);
+            return {
+                error: error.message,
+                iceServers: [],
+                candidates: [],
+                candidateTypes: {},
+                states: []
+            };
+        }
     }
 }
 

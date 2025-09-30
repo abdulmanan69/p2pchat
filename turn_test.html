@@ -11,7 +11,9 @@
         .success { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
         .warning { background: #fff3cd; color: #856404; }
-        textarea { width: 100%; height: 150px; font-family: monospace; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        textarea { width: 100%; height: 150px; font-family: monospace; margin-top: 10px; }
+        .log { height: 200px; overflow-y: auto; font-family: monospace; background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; }
     </style>
 </head>
 <body>
@@ -28,6 +30,7 @@
         <h2>TURN Connectivity Test</h2>
         <button id="testTurn">Test TURN Connectivity</button>
         <div id="connectivityResult" class="result"></div>
+        <div id="connectivityLog" class="log" style="display:none;"></div>
     </div>
     
     <div class="test-section">
@@ -42,6 +45,18 @@
         document.getElementById('fetchTurn').addEventListener('click', fetchTurnCredentials);
         document.getElementById('testTurn').addEventListener('click', testTurnConnectivity);
         document.getElementById('analyzeIce').addEventListener('click', analyzeIceCandidates);
+        
+        // Console log capture
+        const originalLog = console.log;
+        const logDiv = document.getElementById('connectivityLog');
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            if (logDiv.style.display !== 'none') {
+                const timestamp = new Date().toLocaleTimeString();
+                logDiv.innerHTML += `[${timestamp}] ${args.join(' ')}\n`;
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
+        };
         
         async function fetchTurnCredentials() {
             const result = document.getElementById('turnResult');
@@ -66,36 +81,42 @@
         
         async function testTurnConnectivity() {
             const result = document.getElementById('connectivityResult');
+            const log = document.getElementById('connectivityLog');
+            
             result.innerHTML = 'Testing TURN connectivity...';
             result.className = 'result';
+            log.style.display = 'block';
+            log.innerHTML = '';
             
             try {
-                const pc = await TurnHelper.createPeerConnectionWithTurn();
+                const testResults = await TurnHelper.testTurnConnectivity();
                 
-                // Add a dummy media stream to trigger ICE candidate generation
-                const dummyStream = new MediaStream();
-                pc.addStream(dummyStream);
+                if (testResults.error) {
+                    result.innerHTML = `❌ TURN connectivity test failed: ${testResults.error}`;
+                    result.className = 'result error';
+                    return;
+                }
                 
-                // Create offer
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
+                // Display results
+                let statusText = `✅ TURN connectivity test completed<br>`;
+                statusText += `ICE Servers: ${testResults.iceServers.length}<br>`;
+                statusText += `Candidates Generated: ${testResults.candidates.length}<br>`;
                 
-                result.innerHTML = '✅ TURN server connection test completed';
-                result.className = 'result success';
-                
-                // Check connection state after a delay
-                setTimeout(() => {
-                    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-                        result.innerHTML += '<br>✅ ICE connection established';
-                    } else if (pc.iceConnectionState === 'checking') {
-                        result.innerHTML += '<br>⚠️ ICE still checking (may take some time)';
-                        result.className = 'result warning';
-                    } else {
-                        result.innerHTML += `<br>ℹ️ ICE state: ${pc.iceConnectionState}`;
+                if (testResults.candidates.length > 0) {
+                    statusText += '<br>Candidate Types:<br>';
+                    for (const [type, count] of Object.entries(testResults.candidateTypes)) {
+                        statusText += `&nbsp;&nbsp;${type}: ${count}<br>`;
                     }
-                }, 3000);
+                }
                 
-                pc.close();
+                statusText += '<br>Connection States:<br>';
+                for (const state of testResults.states) {
+                    statusText += `&nbsp;&nbsp;${state.time.split('T')[1].split('.')[0]}: ${state.state}<br>`;
+                }
+                
+                result.innerHTML = statusText;
+                result.className = testResults.candidates.length > 0 ? 'result success' : 'result warning';
+                
             } catch (error) {
                 result.innerHTML = `❌ Error testing TURN connectivity: ${error.message}`;
                 result.className = 'result error';
@@ -114,7 +135,8 @@
                 const candidates = [];
                 const candidateTypes = {};
                 
-                const pc = await TurnHelper.createPeerConnectionWithTurn();
+                const iceServers = await TurnHelper.getTurnCredentials();
+                const pc = new RTCPeerConnection({ iceServers });
                 
                 pc.onicecandidate = (event) => {
                     if (event.candidate) {
@@ -134,13 +156,12 @@
                         }
                         
                         result.className = 'result success';
-                        details.value = candidates.map(c => c.candidate).join('\n');
+                        details.value = candidates.map(c => `${c.type}: ${c.address || c.candidate}`).join('\n');
                     }
                 };
                 
-                // Add a dummy media stream to trigger ICE candidate generation
-                const dummyStream = new MediaStream();
-                pc.addStream(dummyStream);
+                // Create a dummy data channel to trigger ICE
+                const dataChannel = pc.createDataChannel('test');
                 
                 // Create offer
                 const offer = await pc.createOffer();
@@ -151,6 +172,12 @@
                     if (candidates.length === 0) {
                         result.innerHTML = '⚠️ No ICE candidates generated within 5 seconds. This might indicate network issues.';
                         result.className = 'result warning';
+                        
+                        // Show what ICE servers we tried
+                        const serverInfo = iceServers.map(server => 
+                            Array.isArray(server.urls) ? server.urls.join(', ') : server.urls
+                        ).join('\n');
+                        details.value = `Attempted ICE servers:\n${serverInfo}\n\nNo candidates generated.`;
                     }
                     pc.close();
                 }, 5000);
