@@ -64,7 +64,7 @@
     <script src="turn_helper.js"></script>
     <script>
         let testRunning = false;
-        let supabase = null;
+        let supabaseClient = null;
         
         // DOM Elements
         const runTestButton = document.getElementById('runTest');
@@ -79,8 +79,11 @@
                 const startTime = Date.now();
                 
                 function check() {
+                    // Check multiple ways Supabase might be available
                     if (typeof supabase !== 'undefined' && typeof supabase.createClient === 'function') {
-                        resolve();
+                        resolve(supabase);
+                    } else if (typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function') {
+                        resolve(window.supabase);
                     } else if (Date.now() - startTime > timeout) {
                         reject(new Error('Supabase library not loaded within timeout'));
                     } else {
@@ -141,8 +144,9 @@
             
             try {
                 // Wait for Supabase to be loaded
+                let supabaseLib;
                 try {
-                    await waitForSupabase();
+                    supabaseLib = await waitForSupabase();
                     log('✅ Supabase library loaded', 'success');
                 } catch (error) {
                     throw new Error('Supabase library not loaded: ' + error.message);
@@ -163,12 +167,7 @@
                 updateStep('step2', 'current');
                 log('Step 2: Testing Supabase connection...', 'info');
                 
-                // Fix: Use the Supabase client directly from the global scope
-                if (typeof supabase === 'undefined' || typeof supabase.createClient !== 'function') {
-                    throw new Error('Supabase library not loaded properly');
-                }
-                
-                supabaseClient = supabase.createClient(
+                supabaseClient = supabaseLib.createClient(
                     window.SUPABASE_CONFIG.url,
                     window.SUPABASE_CONFIG.anonKey
                 );
@@ -261,8 +260,9 @@
         async function testSupabase() {
             try {
                 // Wait for Supabase to be loaded
+                let supabaseLib;
                 try {
-                    await waitForSupabase();
+                    supabaseLib = await waitForSupabase();
                 } catch (error) {
                     throw new Error('Supabase library not loaded: ' + error.message);
                 }
@@ -271,12 +271,7 @@
                     throw new Error('Supabase configuration is missing');
                 }
                 
-                // Fix: Use the Supabase client directly from the global scope
-                if (typeof supabase === 'undefined' || typeof supabase.createClient !== 'function') {
-                    throw new Error('Supabase library not loaded properly');
-                }
-                
-                const testSupabaseClient = supabase.createClient(
+                const testSupabaseClient = supabaseLib.createClient(
                     window.SUPABASE_CONFIG.url,
                     window.SUPABASE_CONFIG.anonKey
                 );
