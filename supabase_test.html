@@ -16,8 +16,8 @@
             resultDiv.innerHTML = 'Testing...';
             
             try {
-                // Initialize Supabase
-                const supabase = supabase.createClient(
+                // Initialize Supabase using the correct method
+                const supabaseClient = supabase.createClient(
                     window.SUPABASE_CONFIG.url,
                     window.SUPABASE_CONFIG.anonKey
                 );
@@ -25,7 +25,7 @@
                 resultDiv.innerHTML += '<br>Supabase client initialized successfully';
                 
                 // Test inserting a record
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('signals')
                     .insert({
                         room_id: 'test-room',
@@ -44,7 +44,7 @@
                 }
                 
                 // Test querying records
-                const { data: selectData, error: selectError } = await supabase
+                const { data: selectData, error: selectError } = await supabaseClient
                     .from('signals')
                     .select('*')
                     .limit(5);
