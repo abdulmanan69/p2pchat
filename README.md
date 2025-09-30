@@ -24,6 +24,8 @@ A fully functional peer-to-peer chat application using WebRTC, Supabase, and Git
 - `fix_signals_table.sql` - Fix script for ID column issues
 - `supabase_test.html` - Supabase connection testing tool
 - `signals_table.csv` - CSV template for table import
+- `webrtc_test.html` - WebRTC connectivity testing tool
+- `WEBRTC_TROUBLESHOOTING.md` - Detailed WebRTC troubleshooting guide
 
 ## Prerequisites
 
@@ -155,6 +157,15 @@ If you have GitHub Desktop installed:
    - Check that you're using the anon key and not the service key
    - **"null value in column 'id' violates not-null constraint"**: The ID column is not configured for auto-increment (see SUPABASE_SETUP.md)
 
+5. **WebRTC Connection Issues**:
+   - Peers can't connect to each other
+   - Messages aren't being sent between peers
+   - ICE candidates aren't being generated
+   - Data channels aren't opening
+   - STUN servers are unreachable
+
+   For WebRTC-specific issues, see [WEBRTC_TROUBLESHOOTING.md](file:///C:/Users/PMLS/Desktop/chat/WEBRTC_TROUBLESHOOTING.md) for detailed troubleshooting steps.
+
 ### Debugging Steps
 
 1. Open the browser's developer tools (F12)
@@ -175,6 +186,16 @@ If you have GitHub Desktop installed:
    ```
 
 You can also use the `supabase_test.html` file included in the project to test your Supabase connection.
+
+### Testing WebRTC Connectivity
+
+Use the `webrtc_test.html` file to test:
+1. Browser WebRTC support
+2. STUN server connectivity
+3. ICE candidate generation
+4. Data channel functionality
+
+See [WEBRTC_TROUBLESHOOTING.md](file:///C:/Users/PMLS/Desktop/chat/WEBRTC_TROUBLESHOOTING.md) for detailed WebRTC troubleshooting steps.
 
 ## Browser Support
 

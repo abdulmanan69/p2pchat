@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebRTC Connectivity Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        button { padding: 10px 15px; margin: 5px; background: #4a6fa5; color: white; border: none; cursor: pointer; }
+        button:hover { background: #3a5a80; }
+        .result { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>WebRTC Connectivity Test</h1>
+    
+    <div class="test-section">
+        <h2>Browser Compatibility Check</h2>
+        <button id="checkWebRTC">Check WebRTC Support</button>
+        <div id="webRTCResult" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>STUN Server Connectivity</h2>
+        <button id="testSTUN">Test STUN Servers</button>
+        <div id="stunResult" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>ICE Candidate Generation</h2>
+        <button id="testICE">Generate ICE Candidates</button>
+        <div id="iceResult" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Data Channel Test</h2>
+        <button id="testDataChannel">Test Data Channel</button>
+        <div id="dataChannelResult" class="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('checkWebRTC').addEventListener('click', checkWebRTCSupport);
+        document.getElementById('testSTUN').addEventListener('click', testSTUNServers);
+        document.getElementById('testICE').addEventListener('click', testICECandidates);
+        document.getElementById('testDataChannel').addEventListener('click', testDataChannel);
+        
+        function checkWebRTCSupport() {
+            const result = document.getElementById('webRTCResult');
+            
+            if (typeof RTCPeerConnection !== 'undefined') {
+                result.innerHTML = '✅ RTCPeerConnection is supported';
+                result.className = 'result success';
+            } else {
+                result.innerHTML = '❌ RTCPeerConnection is not supported';
+                result.className = 'result error';
+                return;
+            }
+            
+            if (typeof RTCDataChannel !== 'undefined') {
+                result.innerHTML += '<br>✅ RTCDataChannel is supported';
+            } else {
+                result.innerHTML += '<br>❌ RTCDataChannel is not supported';
+                result.className = 'result error';
+                return;
+            }
+            
+            result.innerHTML += '<br>✅ WebRTC is fully supported in this browser';
+        }
+        
+        async function testSTUNServers() {
+            const result = document.getElementById('stunResult');
+            result.innerHTML = 'Testing STUN servers...';
+            result.className = 'result';
+            
+            try {
+                const pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                });
+                
+                // Add a dummy media stream to trigger ICE candidate generation
+                const dummyStream = new MediaStream();
+                pc.addStream(dummyStream);
+                
+                // Create offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                result.innerHTML = '✅ STUN servers are reachable';
+                result.className = 'result success';
+                
+                pc.close();
+            } catch (error) {
+                result.innerHTML = `❌ Error testing STUN servers: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testICECandidates() {
+            const result = document.getElementById('iceResult');
+            result.innerHTML = 'Generating ICE candidates...';
+            result.className = 'result';
+            
+            try {
+                const candidates = [];
+                
+                const pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                });
+                
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        candidates.push(event.candidate);
+                        result.innerHTML = `Generated ${candidates.length} ICE candidates...`;
+                    } else if (candidates.length > 0) {
+                        result.innerHTML = `✅ Successfully generated ${candidates.length} ICE candidates<br>`;
+                        candidates.forEach((candidate, index) => {
+                            result.innerHTML += `${index + 1}. ${candidate.candidate}<br>`;
+                        });
+                        result.className = 'result success';
+                    }
+                };
+                
+                // Add a dummy media stream to trigger ICE candidate generation
+                const dummyStream = new MediaStream();
+                pc.addStream(dummyStream);
+                
+                // Create offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                // Timeout after 5 seconds
+                setTimeout(() => {
+                    if (candidates.length === 0) {
+                        result.innerHTML = '⚠️ No ICE candidates generated within 5 seconds. This might indicate network issues.';
+                        result.className = 'result error';
+                    }
+                    pc.close();
+                }, 5000);
+                
+            } catch (error) {
+                result.innerHTML = `❌ Error generating ICE candidates: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testDataChannel() {
+            const result = document.getElementById('dataChannelResult');
+            result.innerHTML = 'Testing data channel...';
+            result.className = 'result';
+            
+            try {
+                // Create two peer connections for local testing
+                const pc1 = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+                
+                const pc2 = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+                
+                // Set up data channel
+                const dataChannel = pc1.createDataChannel('test');
+                
+                dataChannel.onopen = () => {
+                    result.innerHTML = '✅ Data channel opened successfully';
+                    result.className = 'result success';
+                    dataChannel.send('Hello from data channel!');
+                };
+                
+                dataChannel.onmessage = (event) => {
+                    result.innerHTML += `<br>Received message: ${event.data}`;
+                };
+                
+                pc2.ondatachannel = (event) => {
+                    const channel = event.channel;
+                    channel.onmessage = (event) => {
+                        result.innerHTML += `<br>Received via peer connection: ${event.data}`;
+                    };
+                };
+                
+                // Set up ICE candidate exchange
+                pc1.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        pc2.addIceCandidate(event.candidate);
+                    }
+                };
+                
+                pc2.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        pc1.addIceCandidate(event.candidate);
+                    }
+                };
+                
+                // Create offer
+                const offer = await pc1.createOffer();
+                await pc1.setLocalDescription(offer);
+                await pc2.setRemoteDescription(offer);
+                
+                // Create answer
+                const answer = await pc2.createAnswer();
+                await pc2.setLocalDescription(answer);
+                await pc1.setRemoteDescription(answer);
+                
+                // Timeout after 10 seconds
+                setTimeout(() => {
+                    pc1.close();
+                    pc2.close();
+                }, 10000);
+                
+            } catch (error) {
+                result.innerHTML = `❌ Error testing data channel: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+    </script>
+</body>
+</html>
