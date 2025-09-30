@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Network Diagnostics for TURN Server</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        button { padding: 10px 15px; margin: 5px; background: #4a6fa5; color: white; border: none; cursor: pointer; }
+        button:hover { background: #3a5a80; }
+        .result { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        textarea { width: 100%; height: 150px; font-family: monospace; margin-top: 10px; }
+        .log { height: 200px; overflow-y: auto; font-family: monospace; background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>Network Diagnostics for TURN Server</h1>
+    <p>Testing connectivity to: turn.speed.cloudflare.com:50000</p>
+    
+    <div class="test-section">
+        <h2>DNS Resolution Test</h2>
+        <button id="testDns">Test DNS Resolution</button>
+        <div id="dnsResult" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Port Connectivity Tests</h2>
+        <button id="testUdp">Test UDP Port 50000</button>
+        <button id="testTcp">Test TCP Port 50000</button>
+        <button id="testPorts">Test Common TURN Ports</button>
+        <div id="portResult" class="result"></div>
+        <div id="portDetails"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Network Path Analysis</h2>
+        <button id="testPath">Analyze Network Path</button>
+        <div id="pathResult" class="result"></div>
+        <textarea id="pathDetails" placeholder="Network path details will appear here"></textarea>
+    </div>
+    
+    <div class="test-section">
+        <h2>Firewall/Proxy Detection</h2>
+        <button id="testFirewall">Detect Network Restrictions</button>
+        <div id="firewallResult" class="result"></div>
+        <div id="firewallDetails"></div>
+    </div>
+
+    <script>
+        document.getElementById('testDns').addEventListener('click', testDnsResolution);
+        document.getElementById('testUdp').addEventListener('click', testUdpPort);
+        document.getElementById('testTcp').addEventListener('click', testTcpPort);
+        document.getElementById('testPorts').addEventListener('click', testCommonTurnPorts);
+        document.getElementById('testPath').addEventListener('click', testNetworkPath);
+        document.getElementById('testFirewall').addEventListener('click', testFirewallRestrictions);
+        
+        async function testDnsResolution() {
+            const result = document.getElementById('dnsResult');
+            result.innerHTML = 'Testing DNS resolution for turn.speed.cloudflare.com...';
+            result.className = 'result';
+            
+            try {
+                // Try to resolve the domain using fetch to a known endpoint
+                const startTime = Date.now();
+                const response = await fetch('https://cloudflare-dns.com/dns-query?name=turn.speed.cloudflare.com&type=A', {
+                    headers: {
+                        'Accept': 'application/dns-json'
+                    }
+                });
+                
+                const endTime = Date.now();
+                const responseTime = endTime - startTime;
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.Answer && data.Answer.length > 0) {
+                        const ips = data.Answer.map(answer => answer.data).join(', ');
+                        result.innerHTML = `✅ DNS Resolution Successful<br>IP Addresses: ${ips}<br>Response Time: ${responseTime}ms`;
+                        result.className = 'result success';
+                    } else {
+                        result.innerHTML = '⚠️ DNS query returned no results';
+                        result.className = 'result warning';
+                    }
+                } else {
+                    result.innerHTML = `❌ DNS Resolution Failed: ${response.status} ${response.statusText}`;
+                    result.className = 'result error';
+                }
+            } catch (error) {
+                result.innerHTML = `❌ DNS Resolution Error: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testUdpPort() {
+            const result = document.getElementById('portResult');
+            result.innerHTML = 'Testing UDP port 50000 connectivity...';
+            result.className = 'result';
+            
+            // Since we can't directly test UDP from browser, we'll use indirect methods
+            result.innerHTML = `ℹ️ Direct UDP port testing not possible from browser<br>
+                               This is a limitation of web browsers for security reasons.<br>
+                               TURN servers work differently than typical UDP services.`;
+            result.className = 'result info';
+        }
+        
+        async function testTcpPort() {
+            const result = document.getElementById('portResult');
+            result.innerHTML = 'Testing TCP port 50000 connectivity...';
+            result.className = 'result';
+            
+            try {
+                // Try to connect via WebSocket (some TURN servers support this)
+                const startTime = Date.now();
+                
+                // This will likely fail, but we can see how it fails
+                const ws = new WebSocket('wss://turn.speed.cloudflare.com:50000');
+                
+                ws.onopen = () => {
+                    const endTime = Date.now();
+                    result.innerHTML = `✅ TCP Connection Successful<br>Response Time: ${endTime - startTime}ms`;
+                    result.className = 'result success';
+                    ws.close();
+                };
+                
+                ws.onerror = (error) => {
+                    // This is expected for TURN servers
+                    result.innerHTML = `ℹ️ TCP Connection Test Inconclusive<br>
+                                       TURN servers typically don't accept WebSocket connections.<br>
+                                       This is normal behavior.`;
+                    result.className = 'result info';
+                };
+                
+                // Timeout
+                setTimeout(() => {
+                    if (result.className === 'result') {
+                        result.innerHTML = `ℹ️ TCP Connection Test Timeout<br>
+                                           No response from port 50000 within timeout period.<br>
+                                           This could indicate network restrictions.`;
+                        result.className = 'result warning';
+                    }
+                }, 5000);
+                
+            } catch (error) {
+                result.innerHTML = `ℹ️ TCP Connection Test Inconclusive<br>
+                                   ${error.message}<br>
+                                   This is normal for TURN servers.`;
+                result.className = 'result info';
+            }
+        }
+        
+        async function testCommonTurnPorts() {
+            const result = document.getElementById('portResult');
+            const details = document.getElementById('portDetails');
+            
+            result.innerHTML = 'Testing common TURN server ports...';
+            result.className = 'result';
+            details.innerHTML = '';
+            
+            // Common TURN ports to test
+            const ports = [
+                { port: 3478, protocol: 'STUN/TURN default' },
+                { port: 5349, protocol: 'TURN over TLS' },
+                { port: 50000, protocol: 'Cloudflare TURN' },
+                { port: 443, protocol: 'HTTPS/TURN over TLS' },
+                { port: 80, protocol: 'HTTP' }
+            ];
+            
+            let resultsHtml = '<table><tr><th>Port</th><th>Protocol</th><th>Status</th><th>Notes</th></tr>';
+            
+            for (const { port, protocol } of ports) {
+                try {
+                    // Test with a simple fetch to see if anything responds
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 3000);
+                    
+                    const startTime = Date.now();
+                    const response = await fetch(`https://turn.speed.cloudflare.com:${port}`, {
+                        mode: 'no-cors',
+                        signal: controller.signal
+                    });
+                    const endTime = Date.now();
+                    
+                    clearTimeout(timeoutId);
+                    
+                    // If we get here, the port responded (even if blocked by CORS)
+                    resultsHtml += `<tr>
+                        <td>${port}</td>
+                        <td>${protocol}</td>
+                        <td>Responded</td>
+                        <td>${endTime - startTime}ms response</td>
+                    </tr>`;
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        resultsHtml += `<tr>
+                            <td>${port}</td>
+                            <td>${protocol}</td>
+                            <td>Timeout</td>
+                            <td>No response within 3 seconds</td>
+                        </tr>`;
+                    } else {
+                        // Port likely blocked or filtered
+                        resultsHtml += `<tr>
+                            <td>${port}</td>
+                            <td>${protocol}</td>
+                            <td>Blocked</td>
+                            <td>${error.message}</td>
+                        </tr>`;
+                    }
+                }
+            }
+            
+            resultsHtml += '</table>';
+            result.innerHTML = '✅ Common Ports Test Completed';
+            result.className = 'result success';
+            details.innerHTML = resultsHtml;
+        }
+        
+        async function testNetworkPath() {
+            const result = document.getElementById('pathResult');
+            const details = document.getElementById('pathDetails');
+            
+            result.innerHTML = 'Analyzing network path...';
+            result.className = 'result';
+            details.value = '';
+            
+            try {
+                // Get network information through various means
+                let networkInfo = 'Network Path Analysis:\n';
+                networkInfo += '=====================\n\n';
+                
+                // Browser information
+                networkInfo += 'Browser Information:\n';
+                networkInfo += `- User Agent: ${navigator.userAgent}\n`;
+                networkInfo += `- Platform: ${navigator.platform}\n`;
+                networkInfo += `- Language: ${navigator.language}\n\n`;
+                
+                // Connection information
+                networkInfo += 'Connection Information:\n';
+                if (navigator.connection) {
+                    networkInfo += `- Effective Type: ${navigator.connection.effectiveType}\n`;
+                    networkInfo += `- Downlink: ${navigator.connection.downlink} Mbps\n`;
+                    networkInfo += `- RTT: ${navigator.connection.rtt} ms\n`;
+                    networkInfo += `- Save Data: ${navigator.connection.saveData}\n`;
+                } else {
+                    networkInfo += '- Connection API not available\n';
+                }
+                networkInfo += '\n';
+                
+                // Test latency to Cloudflare
+                networkInfo += 'Latency Tests:\n';
+                const domains = [
+                    'cloudflare.com',
+                    'speed.cloudflare.com',
+                    'turn.speed.cloudflare.com'
+                ];
+                
+                for (const domain of domains) {
+                    try {
+                        const startTime = Date.now();
+                        const response = await fetch(`https://${domain}`, { mode: 'no-cors' });
+                        const endTime = Date.now();
+                        networkInfo += `- ${domain}: ${endTime - startTime}ms\n`;
+                    } catch (error) {
+                        networkInfo += `- ${domain}: Error (${error.message})\n`;
+                    }
+                }
+                
+                result.innerHTML = '✅ Network Path Analysis Completed';
+                result.className = 'result success';
+                details.value = networkInfo;
+                
+            } catch (error) {
+                result.innerHTML = `❌ Network Path Analysis Failed: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testFirewallRestrictions() {
+            const result = document.getElementById('firewallResult');
+            const details = document.getElementById('firewallDetails');
+            
+            result.innerHTML = 'Detecting network restrictions...';
+            result.className = 'result';
+            details.innerHTML = '';
+            
+            try {
+                let restrictions = [];
+                
+                // Test WebRTC capabilities
+                result.innerHTML = 'Checking WebRTC capabilities...';
+                
+                if (typeof RTCPeerConnection === 'undefined') {
+                    restrictions.push('WebRTC not supported in this browser');
+                }
+                
+                // Test ICE candidate types that can be gathered
+                result.innerHTML = 'Testing ICE candidate gathering...';
+                
+                const iceServers = [
+                    { urls: 'stun:stun.l.google.com:19302' }
+                ];
+                
+                const pc = new RTCPeerConnection({ iceServers });
+                const candidates = [];
+                
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        candidates.push(event.candidate);
+                    }
+                };
+                
+                // Create a data channel to trigger ICE gathering
+                const dataChannel = pc.createDataChannel('test');
+                
+                // Create offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                // Wait for candidates
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                
+                pc.close();
+                
+                // Analyze candidates
+                if (candidates.length === 0) {
+                    restrictions.push('No ICE candidates gathered - possible firewall/NAT restrictions');
+                } else {
+                    const types = [...new Set(candidates.map(c => c.type))];
+                    if (!types.includes('relay')) {
+                        restrictions.push('No relay candidates - TURN server connectivity issues');
+                    }
+                    if (!types.includes('srflx')) {
+                        restrictions.push('No server reflexive candidates - STUN server issues');
+                    }
+                }
+                
+                // Test various protocols
+                result.innerHTML = 'Testing protocol restrictions...';
+                
+                const protocols = [
+                    { url: 'https://speed.cloudflare.com', name: 'HTTPS' },
+                    { url: 'http://speed.cloudflare.com', name: 'HTTP' }
+                ];
+                
+                for (const { url, name } of protocols) {
+                    try {
+                        await fetch(url, { mode: 'no-cors' });
+                    } catch (error) {
+                        restrictions.push(`${name} requests blocked: ${error.message}`);
+                    }
+                }
+                
+                // Display results
+                if (restrictions.length === 0) {
+                    result.innerHTML = '✅ No Network Restrictions Detected';
+                    result.className = 'result success';
+                    details.innerHTML = 'Your network appears to allow WebRTC connections without restrictions.';
+                } else {
+                    result.innerHTML = '⚠️ Network Restrictions Detected';
+                    result.className = 'result warning';
+                    details.innerHTML = '<ul>';
+                    restrictions.forEach(restriction => {
+                        details.innerHTML += `<li>${restriction}</li>`;
+                    });
+                    details.innerHTML += '</ul>';
+                }
+                
+            } catch (error) {
+                result.innerHTML = `❌ Firewall Detection Failed: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+    </script>
+</body>
+</html>

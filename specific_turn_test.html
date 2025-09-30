@@ -28,9 +28,11 @@
     </div>
     
     <div class="test-section">
-        <h2>Port Connectivity Test</h2>
-        <button id="testPort">Test Port 50000 Connectivity</button>
-        <div id="portResult" class="result"></div>
+        <h2>Port and Protocol Tests</h2>
+        <button id="testUdpTurn">Test UDP TURN (Port 50000)</button>
+        <button id="testTcpTurn">Test TCP TURN (Port 50000)</button>
+        <button id="testTlsTurn">Test TLS TURN (Port 5349)</button>
+        <div id="protocolResult" class="result"></div>
     </div>
     
     <div class="test-section">
@@ -54,7 +56,9 @@
         };
         
         document.getElementById('testDirectTurn').addEventListener('click', testDirectTurnConnectivity);
-        document.getElementById('testPort').addEventListener('click', testPortConnectivity);
+        document.getElementById('testUdpTurn').addEventListener('click', testUdpTurn);
+        document.getElementById('testTcpTurn').addEventListener('click', testTcpTurn);
+        document.getElementById('testTlsTurn').addEventListener('click', testTlsTurn);
         document.getElementById('testManualTurn').addEventListener('click', testManualTurnConfiguration);
         
         async function testDirectTurnConnectivity() {
@@ -120,38 +124,231 @@
             }
         }
         
-        async function testPortConnectivity() {
-            const result = document.getElementById('portResult');
-            result.innerHTML = 'Testing port 50000 connectivity...';
+        async function testUdpTurn() {
+            const result = document.getElementById('protocolResult');
+            result.innerHTML = 'Testing UDP TURN connectivity (Port 50000)...';
             result.className = 'result';
             
             try {
-                // Try to create a WebSocket connection to test the port
-                // Note: This is a simplified test and may not work due to CORS
-                const ws = new WebSocket('wss://turn.speed.cloudflare.com:50000');
-                
-                ws.onopen = () => {
-                    result.innerHTML = '✅ Port 50000 appears to be open';
-                    result.className = 'result success';
-                    ws.close();
-                };
-                
-                ws.onerror = (error) => {
-                    result.innerHTML = 'ℹ️ Unable to test port directly (WebSocket error). This is normal for TURN servers.';
-                    result.className = 'result info';
-                };
-                
-                // Timeout
-                setTimeout(() => {
-                    if (result.className === 'result') {
-                        result.innerHTML = 'ℹ️ Port test inconclusive. This is normal for TURN servers which use different protocols.';
-                        result.className = 'result info';
+                // Test with UDP-specific TURN URL
+                const iceServers = [
+                    { 
+                        urls: 'turn:turn.speed.cloudflare.com:50000?transport=udp', 
+                        username: 'test', 
+                        credential: 'test' 
                     }
-                }, 3000);
+                ];
+                
+                const candidates = [];
+                const candidateTypes = {};
+                const states = [];
+                
+                const pc = new RTCPeerConnection({ iceServers });
+                
+                // Track state changes
+                pc.oniceconnectionstatechange = () => {
+                    states.push(pc.iceConnectionState);
+                };
+                
+                // Collect ICE candidates
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        candidates.push(event.candidate);
+                        const type = event.candidate.type;
+                        candidateTypes[type] = (candidateTypes[type] || 0) + 1;
+                    }
+                };
+                
+                // Create a dummy data channel to trigger ICE
+                const dataChannel = pc.createDataChannel('test');
+                
+                // Create offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                // Wait for candidates to gather
+                await new Promise(resolve => setTimeout(resolve, 8000));
+                
+                pc.close();
+                
+                // Display results
+                let statusText = `✅ UDP TURN Test Completed<br>`;
+                statusText += `Candidates Generated: ${candidates.length}<br>`;
+                
+                if (candidates.length > 0) {
+                    statusText += '<br>Candidate Types:<br>';
+                    for (const [type, count] of Object.entries(candidateTypes)) {
+                        statusText += `&nbsp;&nbsp;${type}: ${count}<br>`;
+                    }
+                    
+                    // Check specifically for relay candidates
+                    if (candidateTypes.relay > 0) {
+                        statusText += '<br>✅ UDP TURN Relay Candidates Generated';
+                    } else {
+                        statusText += '<br>⚠️ No UDP TURN Relay Candidates';
+                    }
+                } else {
+                    statusText += '<br>❌ No ICE Candidates Generated';
+                }
+                
+                result.innerHTML = statusText;
+                result.className = candidates.length > 0 ? 'result success' : 'result error';
                 
             } catch (error) {
-                result.innerHTML = 'ℹ️ Unable to test port directly. This is normal for TURN servers which use different protocols.';
-                result.className = 'result info';
+                result.innerHTML = `❌ UDP TURN Test Failed: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testTcpTurn() {
+            const result = document.getElementById('protocolResult');
+            result.innerHTML = 'Testing TCP TURN connectivity (Port 50000)...';
+            result.className = 'result';
+            
+            try {
+                // Test with TCP-specific TURN URL
+                const iceServers = [
+                    { 
+                        urls: 'turn:turn.speed.cloudflare.com:50000?transport=tcp', 
+                        username: 'test', 
+                        credential: 'test' 
+                    }
+                ];
+                
+                const candidates = [];
+                const candidateTypes = {};
+                const states = [];
+                
+                const pc = new RTCPeerConnection({ iceServers });
+                
+                // Track state changes
+                pc.oniceconnectionstatechange = () => {
+                    states.push(pc.iceConnectionState);
+                };
+                
+                // Collect ICE candidates
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        candidates.push(event.candidate);
+                        const type = event.candidate.type;
+                        candidateTypes[type] = (candidateTypes[type] || 0) + 1;
+                    }
+                };
+                
+                // Create a dummy data channel to trigger ICE
+                const dataChannel = pc.createDataChannel('test');
+                
+                // Create offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                // Wait for candidates to gather
+                await new Promise(resolve => setTimeout(resolve, 8000));
+                
+                pc.close();
+                
+                // Display results
+                let statusText = `✅ TCP TURN Test Completed<br>`;
+                statusText += `Candidates Generated: ${candidates.length}<br>`;
+                
+                if (candidates.length > 0) {
+                    statusText += '<br>Candidate Types:<br>';
+                    for (const [type, count] of Object.entries(candidateTypes)) {
+                        statusText += `&nbsp;&nbsp;${type}: ${count}<br>`;
+                    }
+                    
+                    // Check specifically for relay candidates
+                    if (candidateTypes.relay > 0) {
+                        statusText += '<br>✅ TCP TURN Relay Candidates Generated';
+                    } else {
+                        statusText += '<br>⚠️ No TCP TURN Relay Candidates';
+                    }
+                } else {
+                    statusText += '<br>❌ No ICE Candidates Generated';
+                }
+                
+                result.innerHTML = statusText;
+                result.className = candidates.length > 0 ? 'result success' : 'result error';
+                
+            } catch (error) {
+                result.innerHTML = `❌ TCP TURN Test Failed: ${error.message}`;
+                result.className = 'result error';
+            }
+        }
+        
+        async function testTlsTurn() {
+            const result = document.getElementById('protocolResult');
+            result.innerHTML = 'Testing TLS TURN connectivity (Port 5349)...';
+            result.className = 'result';
+            
+            try {
+                // Test with TLS TURN URL
+                const iceServers = [
+                    { 
+                        urls: 'turns:turn.speed.cloudflare.com:5349?transport=tcp', 
+                        username: 'test', 
+                        credential: 'test' 
+                    }
+                ];
+                
+                const candidates = [];
+                const candidateTypes = {};
+                const states = [];
+                
+                const pc = new RTCPeerConnection({ iceServers });
+                
+                // Track state changes
+                pc.oniceconnectionstatechange = () => {
+                    states.push(pc.iceConnectionState);
+                };
+                
+                // Collect ICE candidates
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        candidates.push(event.candidate);
+                        const type = event.candidate.type;
+                        candidateTypes[type] = (candidateTypes[type] || 0) + 1;
+                    }
+                };
+                
+                // Create a dummy data channel to trigger ICE
+                const dataChannel = pc.createDataChannel('test');
+                
+                // Create offer
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                // Wait for candidates to gather
+                await new Promise(resolve => setTimeout(resolve, 8000));
+                
+                pc.close();
+                
+                // Display results
+                let statusText = `✅ TLS TURN Test Completed<br>`;
+                statusText += `Candidates Generated: ${candidates.length}<br>`;
+                
+                if (candidates.length > 0) {
+                    statusText += '<br>Candidate Types:<br>';
+                    for (const [type, count] of Object.entries(candidateTypes)) {
+                        statusText += `&nbsp;&nbsp;${type}: ${count}<br>`;
+                    }
+                    
+                    // Check specifically for relay candidates
+                    if (candidateTypes.relay > 0) {
+                        statusText += '<br>✅ TLS TURN Relay Candidates Generated';
+                    } else {
+                        statusText += '<br>⚠️ No TLS TURN Relay Candidates';
+                    }
+                } else {
+                    statusText += '<br>❌ No ICE Candidates Generated';
+                }
+                
+                result.innerHTML = statusText;
+                result.className = candidates.length > 0 ? 'result success' : 'result error';
+                
+            } catch (error) {
+                result.innerHTML = `❌ TLS TURN Test Failed: ${error.message}`;
+                result.className = 'result error';
             }
         }
         
@@ -239,7 +436,7 @@
                 pc.close();
                 
                 // Display results
-                let statusText = `✅ Manual TURN configuration test completed<br>`;
+                let statusText = `✅ Manual TURN Configuration Test Completed<br>`;
                 statusText += `Candidates Generated: ${candidates.length}<br>`;
                 
                 if (candidates.length > 0) {
@@ -276,7 +473,7 @@
                 }
                 
             } catch (error) {
-                result.innerHTML = `❌ Manual TURN configuration test failed: ${error.message}`;
+                result.innerHTML = `❌ Manual TURN Configuration Test Failed: ${error.message}`;
                 result.className = 'result error';
                 details.value += `\n\nError: ${error.message}`;
             }
