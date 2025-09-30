@@ -65,6 +65,12 @@ class P2PChat {
         if (resetButton) {
             resetButton.addEventListener('click', () => this.resetConnection());
         }
+        
+        // Add discover button event listener
+        const discoverButton = document.getElementById('discoverButton');
+        if (discoverButton) {
+            discoverButton.addEventListener('click', () => this.discoverPeers());
+        }
     }
     
     async joinRoom() {
@@ -113,7 +119,6 @@ class P2PChat {
                     },
                     (payload) => {
                         console.log('Received signal:', payload.new);
-                        this.showMessage(`Received signal of type: ${payload.new.type}`);
                         this.handleSignal(payload.new);
                     }
                 )
@@ -125,7 +130,7 @@ class P2PChat {
                         this.updateRoomStatus('Connected');
                         this.enableChat();
                         
-                        // Send a test signal to verify everything works
+                        // Send a test signal to notify others we've joined
                         // Add a small delay to ensure subscription is fully established
                         setTimeout(() => {
                             this.sendSignal({
@@ -147,10 +152,6 @@ class P2PChat {
                 }
             }, 15000); // 15 second timeout
             
-            // When joining a room, we don't automatically create offers
-            // Instead, we wait for other peers to send 'new-peer' signals
-            // and then we'll create offers for them
-            this.showMessage('Waiting for other peers to join...');
         } catch (error) {
             console.error('Error joining room:', error);
             this.showMessage(`Error joining room: ${error.message}`);
@@ -258,21 +259,26 @@ class P2PChat {
             switch (signal.type) {
                 case 'new-peer':
                     // When a new peer joins, we create an offer to connect to them
-                    // But only if we're not the sender (to avoid circular connections)
-                    if (signal.sender !== this.userId) {
-                        this.showMessage(`Creating offer for new peer: ${signal.sender}`);
-                        await this.createOfferForPeer(signal.sender);
-                    }
+                    console.log('New peer joined:', signal.sender);
+                    this.showMessage(`New peer joined: ${signal.sender_name || signal.sender}`);
+                    
+                    // Add a small delay to ensure both peers are ready
+                    setTimeout(() => {
+                        this.createOfferForPeer(signal.sender);
+                    }, 1000);
                     break;
                 case 'offer':
+                    console.log('Received offer from:', signal.sender);
                     this.showMessage(`Received offer from: ${signal.sender_name || signal.sender}`);
                     await this.handleOffer(signal);
                     break;
                 case 'answer':
+                    console.log('Received answer from:', signal.sender);
                     this.showMessage(`Received answer from: ${signal.sender_name || signal.sender}`);
                     await this.handleAnswer(signal);
                     break;
                 case 'ice-candidate':
+                    console.log('Received ICE candidate from:', signal.sender);
                     this.showMessage(`Received ICE candidate from: ${signal.sender_name || signal.sender}`);
                     await this.handleIceCandidate(signal);
                     break;
@@ -581,20 +587,26 @@ class P2PChat {
             resetButton.style.display = 'inline-block';
         }
         
+        // Show discover button
+        const discoverButton = document.getElementById('discoverButton');
+        if (discoverButton) {
+            discoverButton.style.display = 'inline-block';
+        }
+        
         // Show connection status periodically
         this.connectionStatusInterval = setInterval(() => {
             this.showConnectionStatus();
-        }, 5000);
-    }
-    
-    showConnectionStatus() {
-        const peerCount = this.peers.size;
-        const peerList = Array.from(this.peers.entries()).map(([id, peer]) => {
-            const state = peer.dataChannel ? peer.dataChannel.readyState : 'no channel';
-            return `${id}: ${state}`;
-        }).join(', ');
+        }, 3000);
         
-        this.showMessage(`Peers connected: ${peerCount}. ${peerCount > 0 ? `Status: ${peerList}` : ''}`);
+        // Periodically send discovery signals to help establish connections
+        this.discoveryInterval = setInterval(() => {
+            if (this.peers.size === 0) {
+                // If no peers, send discovery signal
+                this.sendSignal({
+                    type: 'new-peer'
+                });
+            }
+        }, 10000); // Every 10 seconds
     }
     
     resetConnection() {
@@ -603,10 +615,19 @@ class P2PChat {
             clearInterval(this.connectionStatusInterval);
         }
         
+        // Clear discovery interval
+        if (this.discoveryInterval) {
+            clearInterval(this.discoveryInterval);
+        }
+        
         // Close all peer connections
         for (const [peerId, peer] of this.peers.entries()) {
             if (peer.connection) {
-                peer.connection.close();
+                try {
+                    peer.connection.close();
+                } catch (e) {
+                    console.error('Error closing peer connection:', e);
+                }
             }
         }
         
@@ -615,7 +636,11 @@ class P2PChat {
         
         // Unsubscribe from channel if exists
         if (this.channel) {
-            this.channel.unsubscribe();
+            try {
+                this.channel.unsubscribe();
+            } catch (e) {
+                console.error('Error unsubscribing from channel:', e);
+            }
             this.channel = null;
         }
         
@@ -626,10 +651,15 @@ class P2PChat {
         this.elements.roomIdInput.disabled = false;
         this.elements.roomStatus.textContent = 'Not connected';
         
-        // Hide reset button
+        // Hide reset and discover buttons
         const resetButton = document.getElementById('resetButton');
         if (resetButton) {
             resetButton.style.display = 'none';
+        }
+        
+        const discoverButton = document.getElementById('discoverButton');
+        if (discoverButton) {
+            discoverButton.style.display = 'none';
         }
         
         this.showMessage('Connection reset. You can now join a room again.');
