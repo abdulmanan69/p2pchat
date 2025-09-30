@@ -168,13 +168,11 @@ class P2PChat {
         this.showMessage(`Creating connection offer for peer: ${targetPeerId}`);
         
         try {
+            // Get ICE servers (including TURN if available)
+            const iceServers = await this.getIceServers();
+            
             // Create RTCPeerConnection
-            const peerConnection = new RTCPeerConnection({
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' }
-                ]
-            });
+            const peerConnection = new RTCPeerConnection({ iceServers });
             
             console.log('Created RTCPeerConnection for peer:', targetPeerId);
             
@@ -201,6 +199,11 @@ class P2PChat {
             peerConnection.onconnectionstatechange = () => {
                 console.log('Connection state changed for peer:', targetPeerId, peerConnection.connectionState);
                 this.showMessage(`Connection state for ${targetPeerId}: ${peerConnection.connectionState}`);
+                
+                // If connection fails, try with TURN server
+                if (peerConnection.connectionState === 'failed') {
+                    this.showMessage(`Connection failed with peer ${targetPeerId}.`);
+                }
             };
             
             peerConnection.oniceconnectionstatechange = () => {
@@ -270,74 +273,82 @@ class P2PChat {
     async handleOffer(signal) {
         this.showMessage(`Handling offer from: ${signal.sender_name || signal.sender}`);
         
-        // Create RTCPeerConnection for remote peer
-        const peerConnection = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        });
-        
-        console.log('Created RTCPeerConnection for handling offer from:', signal.sender);
-        
-        // Store connection
-        this.peers.set(signal.sender, { connection: peerConnection });
-        
-        // Handle data channel
-        peerConnection.ondatachannel = (event) => {
-            const dataChannel = event.channel;
-            this.showMessage(`Data channel established with: ${signal.sender_name || signal.sender}`);
-            this.setupDataChannel(dataChannel, signal.sender);
-            // Update the peer with the data channel
-            const peer = this.peers.get(signal.sender);
-            if (peer) {
-                peer.dataChannel = dataChannel;
-            }
-        };
-        
-        // Handle ICE candidates
-        peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                console.log('Generated ICE candidate for peer (answer):', signal.sender);
-                this.sendSignal({
-                    type: 'ice-candidate',
-                    candidate: event.candidate,
-                    target: signal.sender
-                });
-            }
-        };
-        
-        // Handle connection state changes
-        peerConnection.onconnectionstatechange = () => {
-            console.log('Connection state changed for peer (answer):', signal.sender, peerConnection.connectionState);
-            this.showMessage(`Connection state for ${signal.sender}: ${peerConnection.connectionState}`);
-        };
-        
-        peerConnection.oniceconnectionstatechange = () => {
-            console.log('ICE connection state changed for peer (answer):', signal.sender, peerConnection.iceConnectionState);
-            this.showMessage(`ICE state for ${signal.sender}: ${peerConnection.iceConnectionState}`);
-        };
-        
-        // Set remote description
-        await peerConnection.setRemoteDescription({
-            type: 'offer',
-            sdp: signal.sdp
-        });
-        
-        console.log('Set remote description for peer:', signal.sender);
-        
-        // Create answer
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        
-        console.log('Created answer for peer:', signal.sender);
-        
-        // Send answer
-        this.sendSignal({
-            type: 'answer',
-            sdp: answer.sdp,
-            target: signal.sender
-        });
+        try {
+            // Get ICE servers (including TURN if available)
+            const iceServers = await this.getIceServers();
+            
+            // Create RTCPeerConnection for remote peer
+            const peerConnection = new RTCPeerConnection({ iceServers });
+            
+            console.log('Created RTCPeerConnection for handling offer from:', signal.sender);
+            
+            // Store connection
+            this.peers.set(signal.sender, { connection: peerConnection });
+            
+            // Handle data channel
+            peerConnection.ondatachannel = (event) => {
+                const dataChannel = event.channel;
+                this.showMessage(`Data channel established with: ${signal.sender_name || signal.sender}`);
+                this.setupDataChannel(dataChannel, signal.sender);
+                // Update the peer with the data channel
+                const peer = this.peers.get(signal.sender);
+                if (peer) {
+                    peer.dataChannel = dataChannel;
+                }
+            };
+            
+            // Handle ICE candidates
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    console.log('Generated ICE candidate for peer (answer):', signal.sender);
+                    this.sendSignal({
+                        type: 'ice-candidate',
+                        candidate: event.candidate,
+                        target: signal.sender
+                    });
+                }
+            };
+            
+            // Handle connection state changes
+            peerConnection.onconnectionstatechange = () => {
+                console.log('Connection state changed for peer (answer):', signal.sender, peerConnection.connectionState);
+                this.showMessage(`Connection state for ${signal.sender}: ${peerConnection.connectionState}`);
+                
+                // If connection fails
+                if (peerConnection.connectionState === 'failed') {
+                    this.showMessage(`Connection failed with peer ${signal.sender}.`);
+                }
+            };
+            
+            peerConnection.oniceconnectionstatechange = () => {
+                console.log('ICE connection state changed for peer (answer):', signal.sender, peerConnection.iceConnectionState);
+                this.showMessage(`ICE state for ${signal.sender}: ${peerConnection.iceConnectionState}`);
+            };
+            
+            // Set remote description
+            await peerConnection.setRemoteDescription({
+                type: 'offer',
+                sdp: signal.sdp
+            });
+            
+            console.log('Set remote description for peer:', signal.sender);
+            
+            // Create answer
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            
+            console.log('Created answer for peer:', signal.sender);
+            
+            // Send answer
+            this.sendSignal({
+                type: 'answer',
+                sdp: answer.sdp,
+                target: signal.sender
+            });
+        } catch (error) {
+            console.error('Error handling offer from peer:', signal.sender, error);
+            this.showMessage(`Error handling offer from peer ${signal.sender}: ${error.message}`);
+        }
     }
     
     async handleAnswer(signal) {
@@ -646,6 +657,46 @@ class P2PChat {
         messageDiv.innerHTML = `<strong>System:</strong> ${text}`;
         this.elements.messagesContainer.appendChild(messageDiv);
         this.elements.messagesContainer.scrollTop = this.elements.messagesContainer.scrollHeight;
+    }
+    
+    // Function to get ICE servers including TURN if available
+    async getIceServers() {
+        try {
+            // Try to fetch TURN credentials from Cloudflare
+            const response = await fetch('https://speed.cloudflare.com/turn-creds', { mode: 'cors' });
+            if (response.ok) {
+                const turnData = await response.json();
+                this.showMessage('TURN server credentials obtained');
+                
+                return [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun.cloudflare.com:3478' },
+                    {
+                        urls: turnData.urls,
+                        username: turnData.username,
+                        credential: turnData.credential
+                    }
+                ];
+            } else {
+                // Fallback to STUN only
+                this.showMessage('Using STUN servers only');
+                return [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun.cloudflare.com:3478' }
+                ];
+            }
+        } catch (error) {
+            console.error('Error fetching TURN credentials:', error);
+            // Fallback to STUN only
+            this.showMessage('Using STUN servers only (TURN unavailable)');
+            return [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun.cloudflare.com:3478' }
+            ];
+        }
     }
 }
 
