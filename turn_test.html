@@ -34,6 +34,13 @@
     </div>
     
     <div class="test-section">
+        <h2>Specific Cloudflare TURN Test</h2>
+        <button id="testSpecificTurn">Test Specific TURN Server</button>
+        <div id="specificTurnResult" class="result"></div>
+        <textarea id="specificTurnDetails" placeholder="Specific TURN test details will appear here"></textarea>
+    </div>
+    
+    <div class="test-section">
         <h2>ICE Candidate Analysis</h2>
         <button id="analyzeIce">Analyze ICE Candidates</button>
         <div id="iceResult" class="result"></div>
@@ -44,6 +51,7 @@
     <script>
         document.getElementById('fetchTurn').addEventListener('click', fetchTurnCredentials);
         document.getElementById('testTurn').addEventListener('click', testTurnConnectivity);
+        document.getElementById('testSpecificTurn').addEventListener('click', testSpecificTurnServer);
         document.getElementById('analyzeIce').addEventListener('click', analyzeIceCandidates);
         
         // Console log capture
@@ -123,6 +131,67 @@
             }
         }
         
+        async function testSpecificTurnServer() {
+            const result = document.getElementById('specificTurnResult');
+            const details = document.getElementById('specificTurnDetails');
+            
+            result.innerHTML = 'Testing specific Cloudflare TURN server...';
+            result.className = 'result';
+            details.value = '';
+            
+            try {
+                const testResults = await TurnHelper.testSpecificTurnServer();
+                
+                if (testResults.error) {
+                    result.innerHTML = `❌ Specific TURN server test failed: ${testResults.error}`;
+                    result.className = 'result error';
+                    return;
+                }
+                
+                // Display results
+                let statusText = `✅ Specific TURN server test completed<br>`;
+                statusText += `Candidates Generated: ${testResults.candidates.length}<br>`;
+                
+                if (testResults.candidates.length > 0) {
+                    statusText += '<br>Candidate Types:<br>';
+                    for (const [type, count] of Object.entries(testResults.candidateTypes)) {
+                        statusText += `&nbsp;&nbsp;${type}: ${count}<br>`;
+                    }
+                    
+                    statusText += '<br>Sample Candidates:<br>';
+                    testResults.candidates.slice(0, 3).forEach((candidate, index) => {
+                        statusText += `&nbsp;&nbsp;${index + 1}. ${candidate.type}: ${candidate.protocol || 'N/A'}<br>`;
+                    });
+                } else {
+                    statusText += '<br>⚠️ No ICE candidates generated. This might indicate:<br>';
+                    statusText += '&nbsp;&nbsp;• Network/firewall restrictions<br>';
+                    statusText += '&nbsp;&nbsp;• TURN server connectivity issues<br>';
+                    statusText += '&nbsp;&nbsp;• Incorrect TURN credentials<br>';
+                }
+                
+                statusText += '<br>Connection States:<br>';
+                for (const state of testResults.states) {
+                    statusText += `&nbsp;&nbsp;${state.time.split('T')[1].split('.')[0]}: ${state.state}<br>`;
+                }
+                
+                result.innerHTML = statusText;
+                result.className = testResults.candidates.length > 0 ? 'result success' : 'result warning';
+                
+                // Add candidate details to textarea
+                if (testResults.candidates.length > 0) {
+                    details.value = 'ICE Candidates:\n';
+                    testResults.candidates.forEach((candidate, index) => {
+                        details.value += `${index + 1}. ${candidate.type}: ${candidate.candidate}\n`;
+                    });
+                }
+                
+            } catch (error) {
+                result.innerHTML = `❌ Error testing specific TURN server: ${error.message}`;
+                result.className = 'result error';
+                details.value = `Error: ${error.message}`;
+            }
+        }
+        
         async function analyzeIceCandidates() {
             const result = document.getElementById('iceResult');
             const details = document.getElementById('iceDetails');
@@ -167,10 +236,10 @@
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
                 
-                // Timeout after 5 seconds
+                // Timeout after 8 seconds (increased from 5)
                 setTimeout(() => {
                     if (candidates.length === 0) {
-                        result.innerHTML = '⚠️ No ICE candidates generated within 5 seconds. This might indicate network issues.';
+                        result.innerHTML = '⚠️ No ICE candidates generated within 8 seconds. This might indicate network issues.';
                         result.className = 'result warning';
                         
                         // Show what ICE servers we tried
@@ -180,7 +249,7 @@
                         details.value = `Attempted ICE servers:\n${serverInfo}\n\nNo candidates generated.`;
                     }
                     pc.close();
-                }, 5000);
+                }, 8000);
                 
             } catch (error) {
                 result.innerHTML = `❌ Error analyzing ICE candidates: ${error.message}`;

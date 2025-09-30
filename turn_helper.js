@@ -33,6 +33,11 @@ class TurnHelper {
                         });
                     });
                 } else {
+                    // Check if it's the specific Cloudflare TURN server we identified
+                    if (data.urls.includes('turn.speed.cloudflare.com:50000')) {
+                        console.log('Using specific Cloudflare TURN server:', data.urls);
+                    }
+                    
                     iceServers.push({
                         urls: data.urls,
                         username: data.username,
@@ -91,13 +96,84 @@ class TurnHelper {
                 console.log('Connection State:', pc.connectionState);
             };
             
+            // Handle ICE gathering state
+            pc.onicegatheringstatechange = () => {
+                console.log('ICE Gathering State:', pc.iceGatheringState);
+            };
+            
             // Collect ICE candidates
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
                     results.candidates.push(event.candidate);
                     const type = event.candidate.type;
                     results.candidateTypes[type] = (results.candidateTypes[type] || 0) + 1;
-                    console.log('ICE Candidate:', event.candidate.type, event.candidate.address);
+                    console.log('ICE Candidate:', event.candidate.type, event.candidate.address, event.candidate.port);
+                }
+            };
+            
+            // Create a dummy data channel to trigger ICE
+            const dataChannel = pc.createDataChannel('test');
+            
+            // Create offer
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            
+            // Wait for candidates to gather (increased timeout)
+            await new Promise(resolve => setTimeout(resolve, 8000));
+            
+            pc.close();
+            
+            return results;
+        } catch (error) {
+            console.error('TURN connectivity test failed:', error);
+            return {
+                error: error.message,
+                iceServers: [],
+                candidates: [],
+                candidateTypes: {},
+                states: []
+            };
+        }
+    }
+    
+    // Method to test with specific Cloudflare TURN server
+    static async testSpecificTurnServer() {
+        try {
+            const results = {
+                candidates: [],
+                candidateTypes: {},
+                states: [],
+                error: null
+            };
+            
+            // Use specific Cloudflare TURN server configuration
+            const iceServers = [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { 
+                    urls: 'turn:turn.speed.cloudflare.com:50000', 
+                    username: 'test', 
+                    credential: 'test' 
+                }
+            ];
+            
+            const pc = new RTCPeerConnection({ iceServers });
+            
+            // Track state changes
+            pc.oniceconnectionstatechange = () => {
+                results.states.push({
+                    time: new Date().toISOString(),
+                    state: pc.iceConnectionState
+                });
+                console.log('ICE Connection State (Specific TURN):', pc.iceConnectionState);
+            };
+            
+            // Collect ICE candidates
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    results.candidates.push(event.candidate);
+                    const type = event.candidate.type;
+                    results.candidateTypes[type] = (results.candidateTypes[type] || 0) + 1;
+                    console.log('Specific TURN ICE Candidate:', event.candidate.type, event.candidate.address, event.candidate.port);
                 }
             };
             
@@ -109,16 +185,15 @@ class TurnHelper {
             await pc.setLocalDescription(offer);
             
             // Wait for candidates to gather
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, 8000));
             
             pc.close();
             
             return results;
         } catch (error) {
-            console.error('TURN connectivity test failed:', error);
+            console.error('Specific TURN server test failed:', error);
             return {
                 error: error.message,
-                iceServers: [],
                 candidates: [],
                 candidateTypes: {},
                 states: []
