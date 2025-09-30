@@ -126,11 +126,12 @@ class P2PChat {
                         this.enableChat();
                         
                         // Send a test signal to verify everything works
+                        // Add a small delay to ensure subscription is fully established
                         setTimeout(() => {
                             this.sendSignal({
                                 type: 'new-peer'
                             });
-                        }, 1000);
+                        }, 2000);
                     } else if (status === 'CHANNEL_ERROR') {
                         console.error('Channel error:', error);
                         this.showMessage(`Connection error: ${error?.message || 'Unknown error'}`);
@@ -144,7 +145,7 @@ class P2PChat {
                     this.showMessage('Connection timed out. Please check your network and Supabase configuration.');
                     this.updateRoomStatus('Connection timeout');
                 }
-            }, 10000); // 10 second timeout
+            }, 15000); // 15 second timeout
             
             // When joining a room, we don't automatically create offers
             // Instead, we wait for other peers to send 'new-peer' signals
@@ -160,14 +161,22 @@ class P2PChat {
     async createOfferForPeer(targetPeerId) {
         // Don't create offer if we already have a connection with this peer
         if (this.peers.has(targetPeerId)) {
+            console.log('Already have connection with peer:', targetPeerId);
             return;
         }
+        
+        this.showMessage(`Creating connection offer for peer: ${targetPeerId}`);
         
         try {
             // Create RTCPeerConnection
             const peerConnection = new RTCPeerConnection({
-                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
+                ]
             });
+            
+            console.log('Created RTCPeerConnection for peer:', targetPeerId);
             
             // Create data channel
             const dataChannel = peerConnection.createDataChannel('chat');
@@ -179,6 +188,7 @@ class P2PChat {
             // Handle ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
+                    console.log('Generated ICE candidate for peer:', targetPeerId);
                     this.sendSignal({
                         type: 'ice-candidate',
                         candidate: event.candidate,
@@ -187,9 +197,22 @@ class P2PChat {
                 }
             };
             
+            // Handle connection state changes
+            peerConnection.onconnectionstatechange = () => {
+                console.log('Connection state changed for peer:', targetPeerId, peerConnection.connectionState);
+                this.showMessage(`Connection state for ${targetPeerId}: ${peerConnection.connectionState}`);
+            };
+            
+            peerConnection.oniceconnectionstatechange = () => {
+                console.log('ICE connection state changed for peer:', targetPeerId, peerConnection.iceConnectionState);
+                this.showMessage(`ICE state for ${targetPeerId}: ${peerConnection.iceConnectionState}`);
+            };
+            
             // Create offer
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
+            
+            console.log('Created offer for peer:', targetPeerId);
             
             // Send offer via Supabase
             this.sendSignal({
@@ -199,12 +222,19 @@ class P2PChat {
             });
         } catch (error) {
             console.error('Error creating offer for peer:', targetPeerId, error);
+            this.showMessage(`Error creating offer for peer ${targetPeerId}: ${error.message}`);
         }
     }
     
     async handleSignal(signal) {
         // Don't process our own signals
-        if (signal.sender === this.userId) return;
+        if (signal.sender === this.userId) {
+            console.log('Ignoring own signal:', signal.type);
+            return;
+        }
+        
+        console.log('Processing signal from:', signal.sender, 'type:', signal.type);
+        this.showMessage(`Processing signal from ${signal.sender_name || signal.sender}: ${signal.type}`);
         
         try {
             switch (signal.type) {
@@ -212,29 +242,43 @@ class P2PChat {
                     // When a new peer joins, we create an offer to connect to them
                     // But only if we're not the sender (to avoid circular connections)
                     if (signal.sender !== this.userId) {
+                        this.showMessage(`Creating offer for new peer: ${signal.sender}`);
                         await this.createOfferForPeer(signal.sender);
                     }
                     break;
                 case 'offer':
+                    this.showMessage(`Received offer from: ${signal.sender_name || signal.sender}`);
                     await this.handleOffer(signal);
                     break;
                 case 'answer':
+                    this.showMessage(`Received answer from: ${signal.sender_name || signal.sender}`);
                     await this.handleAnswer(signal);
                     break;
                 case 'ice-candidate':
+                    this.showMessage(`Received ICE candidate from: ${signal.sender_name || signal.sender}`);
                     await this.handleIceCandidate(signal);
                     break;
+                default:
+                    console.log('Unknown signal type:', signal.type);
             }
         } catch (error) {
             console.error('Error handling signal:', error);
+            this.showMessage(`Error handling signal: ${error.message}`);
         }
     }
     
     async handleOffer(signal) {
+        this.showMessage(`Handling offer from: ${signal.sender_name || signal.sender}`);
+        
         // Create RTCPeerConnection for remote peer
         const peerConnection = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
         });
+        
+        console.log('Created RTCPeerConnection for handling offer from:', signal.sender);
         
         // Store connection
         this.peers.set(signal.sender, { connection: peerConnection });
@@ -242,6 +286,7 @@ class P2PChat {
         // Handle data channel
         peerConnection.ondatachannel = (event) => {
             const dataChannel = event.channel;
+            this.showMessage(`Data channel established with: ${signal.sender_name || signal.sender}`);
             this.setupDataChannel(dataChannel, signal.sender);
             // Update the peer with the data channel
             const peer = this.peers.get(signal.sender);
@@ -253,6 +298,7 @@ class P2PChat {
         // Handle ICE candidates
         peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
+                console.log('Generated ICE candidate for peer (answer):', signal.sender);
                 this.sendSignal({
                     type: 'ice-candidate',
                     candidate: event.candidate,
@@ -261,15 +307,30 @@ class P2PChat {
             }
         };
         
+        // Handle connection state changes
+        peerConnection.onconnectionstatechange = () => {
+            console.log('Connection state changed for peer (answer):', signal.sender, peerConnection.connectionState);
+            this.showMessage(`Connection state for ${signal.sender}: ${peerConnection.connectionState}`);
+        };
+        
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log('ICE connection state changed for peer (answer):', signal.sender, peerConnection.iceConnectionState);
+            this.showMessage(`ICE state for ${signal.sender}: ${peerConnection.iceConnectionState}`);
+        };
+        
         // Set remote description
         await peerConnection.setRemoteDescription({
             type: 'offer',
             sdp: signal.sdp
         });
         
+        console.log('Set remote description for peer:', signal.sender);
+        
         // Create answer
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
+        
+        console.log('Created answer for peer:', signal.sender);
         
         // Send answer
         this.sendSignal({
@@ -405,25 +466,38 @@ class P2PChat {
     }
     
     broadcastMessage(message) {
+        console.log('Broadcasting message to', this.peers.size, 'peers');
+        this.showMessage(`Sending message to ${this.peers.size} peers`);
+        
         // Send via data channels to all peers
         for (const [peerId, peer] of this.peers.entries()) {
+            console.log('Checking peer:', peerId, 'dataChannel state:', peer.dataChannel?.readyState);
+            
             if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
                 try {
+                    console.log('Sending message to peer:', peerId);
                     peer.dataChannel.send(JSON.stringify(message));
                 } catch (error) {
                     console.error(`Error sending message to peer ${peerId}:`, error);
+                    this.showMessage(`Error sending message to peer ${peerId}: ${error.message}`);
                 }
             } else if (peer.dataChannel && peer.dataChannel.readyState === 'connecting') {
                 // Wait a bit and try again
+                this.showMessage(`Waiting for connection to peer ${peerId}`);
                 setTimeout(() => {
-                    if (peer.dataChannel.readyState === 'open') {
+                    if (peer.dataChannel && peer.dataChannel.readyState === 'open') {
                         try {
+                            console.log('Sending delayed message to peer:', peerId);
                             peer.dataChannel.send(JSON.stringify(message));
                         } catch (error) {
                             console.error(`Error sending message to peer ${peerId}:`, error);
+                            this.showMessage(`Error sending message to peer ${peerId}: ${error.message}`);
                         }
                     }
-                }, 1000);
+                }, 2000);
+            } else {
+                console.log('Peer', peerId, 'not ready. State:', peer.dataChannel?.readyState || 'no data channel');
+                this.showMessage(`Peer ${peerId} not ready. State: ${peer.dataChannel?.readyState || 'no data channel'}`);
             }
         }
     }
@@ -480,6 +554,59 @@ class P2PChat {
         if (resetButton) {
             resetButton.style.display = 'inline-block';
         }
+        
+        // Show connection status periodically
+        this.connectionStatusInterval = setInterval(() => {
+            this.showConnectionStatus();
+        }, 5000);
+    }
+    
+    showConnectionStatus() {
+        const peerCount = this.peers.size;
+        const peerList = Array.from(this.peers.entries()).map(([id, peer]) => {
+            const state = peer.dataChannel ? peer.dataChannel.readyState : 'no channel';
+            return `${id}: ${state}`;
+        }).join(', ');
+        
+        this.showMessage(`Peers connected: ${peerCount}. ${peerCount > 0 ? `Status: ${peerList}` : ''}`);
+    }
+    
+    resetConnection() {
+        // Clear connection status interval
+        if (this.connectionStatusInterval) {
+            clearInterval(this.connectionStatusInterval);
+        }
+        
+        // Close all peer connections
+        for (const [peerId, peer] of this.peers.entries()) {
+            if (peer.connection) {
+                peer.connection.close();
+            }
+        }
+        
+        // Clear peers map
+        this.peers.clear();
+        
+        // Unsubscribe from channel if exists
+        if (this.channel) {
+            this.channel.unsubscribe();
+            this.channel = null;
+        }
+        
+        // Reset UI
+        this.elements.messageInput.disabled = true;
+        this.elements.sendButton.disabled = true;
+        this.elements.joinRoomBtn.disabled = false;
+        this.elements.roomIdInput.disabled = false;
+        this.elements.roomStatus.textContent = 'Not connected';
+        
+        // Hide reset button
+        const resetButton = document.getElementById('resetButton');
+        if (resetButton) {
+            resetButton.style.display = 'none';
+        }
+        
+        this.showMessage('Connection reset. You can now join a room again.');
     }
     
     generateUserId() {
@@ -519,39 +646,6 @@ class P2PChat {
         messageDiv.innerHTML = `<strong>System:</strong> ${text}`;
         this.elements.messagesContainer.appendChild(messageDiv);
         this.elements.messagesContainer.scrollTop = this.elements.messagesContainer.scrollHeight;
-    }
-    
-    resetConnection() {
-        // Close all peer connections
-        for (const [peerId, peer] of this.peers.entries()) {
-            if (peer.connection) {
-                peer.connection.close();
-            }
-        }
-        
-        // Clear peers map
-        this.peers.clear();
-        
-        // Unsubscribe from channel if exists
-        if (this.channel) {
-            this.channel.unsubscribe();
-            this.channel = null;
-        }
-        
-        // Reset UI
-        this.elements.messageInput.disabled = true;
-        this.elements.sendButton.disabled = true;
-        this.elements.joinRoomBtn.disabled = false;
-        this.elements.roomIdInput.disabled = false;
-        this.elements.roomStatus.textContent = 'Not connected';
-        
-        // Hide reset button
-        const resetButton = document.getElementById('resetButton');
-        if (resetButton) {
-            resetButton.style.display = 'none';
-        }
-        
-        this.showMessage('Connection reset. You can now join a room again.');
     }
 }
 
