@@ -368,6 +368,10 @@ class P2PChat {
             if (error) {
                 console.error('Error sending signal:', error);
                 this.showMessage(`Error sending signal: ${error.message}`);
+                // Add specific handling for ID constraint errors
+                if (error.message.includes('not-null constraint') && error.message.includes('id')) {
+                    this.showMessage('Critical database error: ID column not configured properly. Please check your Supabase table schema.');
+                }
             } else {
                 console.log('Signal sent successfully:', data);
             }

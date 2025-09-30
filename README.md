@@ -21,6 +21,7 @@ A fully functional peer-to-peer chat application using WebRTC, Supabase, and Git
 - `README.md` - This documentation
 - `SUPABASE_SETUP.md` - Detailed Supabase setup guide
 - `supabase_schema.sql` - SQL schema for Supabase table
+- `fix_signals_table.sql` - Fix script for ID column issues
 - `supabase_test.html` - Supabase connection testing tool
 - `signals_table.csv` - CSV template for table import
 
@@ -42,6 +43,8 @@ A fully functional peer-to-peer chat application using WebRTC, Supabase, and Git
 You can either:
 1. Use the `supabase_schema.sql` file and run it in the Supabase SQL editor, or
 2. Follow the manual steps in `SUPABASE_SETUP.md`
+
+**Important**: Make sure the `id` column is properly configured as an auto-incrementing primary key. See the "Fixing ID Column Issues" section in SUPABASE_SETUP.md if you encounter errors.
 
 #### Configure Row Level Security (RLS)
 **Policy 1: Enable read access for all**
@@ -150,6 +153,7 @@ If you have GitHub Desktop installed:
    - Verify RLS policies are correctly configured
    - Ensure the `signals` table has the correct schema
    - Check that you're using the anon key and not the service key
+   - **"null value in column 'id' violates not-null constraint"**: The ID column is not configured for auto-increment (see SUPABASE_SETUP.md)
 
 ### Debugging Steps
 
