@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Supabase Loading</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Debug Supabase Loading</h1>
+    <button onclick="checkSupabase()">Check Supabase</button>
+    <div id="result"></div>
+
+    <script>
+        function checkSupabase() {
+            const result = document.getElementById('result');
+            result.innerHTML = '<h2>Global Scope Check:</h2>';
+            
+            // Check what's available in global scope
+            result.innerHTML += '<p><strong>window.supabase:</strong> ' + (typeof window.supabase) + '</p>';
+            result.innerHTML += '<p><strong>supabase:</strong> ' + (typeof supabase) + '</p>';
+            
+            // Check if createClient exists
+            if (typeof supabase !== 'undefined') {
+                result.innerHTML += '<p><strong>supabase.createClient:</strong> ' + (typeof supabase.createClient) + '</p>';
+            }
+            
+            if (typeof window.supabase !== 'undefined') {
+                result.innerHTML += '<p><strong>window.supabase.createClient:</strong> ' + (typeof window.supabase.createClient) + '</p>';
+            }
+            
+            // List all properties of supabase
+            if (typeof supabase !== 'undefined' && supabase !== null) {
+                result.innerHTML += '<h3>Supabase properties:</h3><ul>';
+                for (let prop in supabase) {
+                    result.innerHTML += `<li>${prop}: ${typeof supabase[prop]}</li>`;
+                }
+                result.innerHTML += '</ul>';
+            }
+            
+            // Try to create client
+            result.innerHTML += '<h2>Client Creation Test:</h2>';
+            try {
+                if (typeof supabase !== 'undefined' && typeof supabase.createClient === 'function') {
+                    result.innerHTML += '<p>✅ supabase.createClient is available</p>';
+                } else if (typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function') {
+                    result.innerHTML += '<p>✅ window.supabase.createClient is available</p>';
+                } else {
+                    result.innerHTML += '<p>❌ No createClient function found</p>';
+                }
+            } catch (error) {
+                result.innerHTML += '<p>❌ Error: ' + error.message + '</p>';
+            }
+        }
+    </script>
+</body>
+</html>

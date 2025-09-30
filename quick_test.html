@@ -73,6 +73,25 @@
         const testResult = document.getElementById('testResult');
         const testLog = document.getElementById('testLog');
         
+        // Wait for Supabase to be fully loaded
+        function waitForSupabase(timeout = 5000) {
+            return new Promise((resolve, reject) => {
+                const startTime = Date.now();
+                
+                function check() {
+                    if (typeof supabase !== 'undefined' && typeof supabase.createClient === 'function') {
+                        resolve();
+                    } else if (Date.now() - startTime > timeout) {
+                        reject(new Error('Supabase library not loaded within timeout'));
+                    } else {
+                        setTimeout(check, 100);
+                    }
+                }
+                
+                check();
+            });
+        }
+        
         // Event Listeners
         runTestButton.addEventListener('click', runCompleteTest);
         stopTestButton.addEventListener('click', stopTest);
@@ -121,6 +140,14 @@
             log('Starting complete test', 'info');
             
             try {
+                // Wait for Supabase to be loaded
+                try {
+                    await waitForSupabase();
+                    log('✅ Supabase library loaded', 'success');
+                } catch (error) {
+                    throw new Error('Supabase library not loaded: ' + error.message);
+                }
+                
                 // Step 1: Check configuration
                 updateStep('step1', 'current');
                 log('Step 1: Checking configuration...', 'info');
@@ -136,13 +163,17 @@
                 updateStep('step2', 'current');
                 log('Step 2: Testing Supabase connection...', 'info');
                 
-                // Fix: Use the Supabase client directly from the CDN
-                supabase = supabase.createClient(
+                // Fix: Use the Supabase client directly from the global scope
+                if (typeof supabase === 'undefined' || typeof supabase.createClient !== 'function') {
+                    throw new Error('Supabase library not loaded properly');
+                }
+                
+                supabaseClient = supabase.createClient(
                     window.SUPABASE_CONFIG.url,
                     window.SUPABASE_CONFIG.anonKey
                 );
                 
-                const { data, error } = await supabase
+                const { data, error } = await supabaseClient
                     .from('signals')
                     .select('id')
                     .limit(1);
@@ -229,11 +260,22 @@
         
         async function testSupabase() {
             try {
+                // Wait for Supabase to be loaded
+                try {
+                    await waitForSupabase();
+                } catch (error) {
+                    throw new Error('Supabase library not loaded: ' + error.message);
+                }
+                
                 if (!window.SUPABASE_CONFIG || !window.SUPABASE_CONFIG.url || !window.SUPABASE_CONFIG.anonKey) {
                     throw new Error('Supabase configuration is missing');
                 }
                 
-                // Fix: Use the Supabase client directly from the CDN
+                // Fix: Use the Supabase client directly from the global scope
+                if (typeof supabase === 'undefined' || typeof supabase.createClient !== 'function') {
+                    throw new Error('Supabase library not loaded properly');
+                }
+                
                 const testSupabaseClient = supabase.createClient(
                     window.SUPABASE_CONFIG.url,
                     window.SUPABASE_CONFIG.anonKey
@@ -281,6 +323,16 @@
         
         // Initialize
         log('Quick P2P Chat Test initialized. Click "Run Complete Test" to start.');
+        log('Waiting for Supabase library to load...', 'info');
+        
+        // Check if Supabase is already loaded
+        waitForSupabase(1000)
+            .then(() => {
+                log('✅ Supabase library loaded successfully', 'success');
+            })
+            .catch(() => {
+                log('⚠️ Supabase library still loading or failed to load', 'warning');
+            });
     </script>
 </body>
 </html>
